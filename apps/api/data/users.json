@@ -1,0 +1,19 @@
+[
+  {
+    "id": "cc0d135c-0e8e-4aa8-ac1e-427467c4af54",
+    "name": "Admin",
+    "email": "admin@gingaflow.local",
+    "role": "ADMIN",
+    "active": true,
+    "password_hash": "$2a$10$itrkKGXjzN3UfgGyRP/RGOtpqPHEX3vZbXb2sOaypIgAsFkeZ23Hy"
+  },
+  {
+    "id": "543ea91e-e263-4543-acd1-f8f3c135a1e7",
+    "name": "Tais",
+    "email": "teste2@teste.com.br",
+    "role": "PROFESSOR",
+    "active": true,
+    "password_hash": "$2a$10$fwXXfJbDbcrDcZHOS2uBt.g7pATje4D4GS0C4RkEEXIwtM1EjtOQi",
+    "relatedId": "34ac8f55-5963-4486-8de0-4f4056e0d40b"
+  }
+]

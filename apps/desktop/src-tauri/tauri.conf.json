@@ -1,0 +1,12 @@
+{
+  "package": { "productName": "GingaFlow", "version": "0.1.0" },
+  "tauri": {
+    "windows": [{ "title": "GingaFlow", "width": 1024, "height": 768 }],
+    "security": { "csp": null }
+  },
+  "build": {
+    "beforeBuildCommand": "pnpm --filter @gingaflow/desktop build",
+    "beforeDevCommand": "pnpm --filter @gingaflow/desktop dev"
+  }
+}
+

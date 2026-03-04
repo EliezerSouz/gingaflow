@@ -1,0 +1,14 @@
+{
+  "extends": "../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2020",
+    "baseUrl": ".",
+    "paths": {
+      "@gingaflow/shared": ["../../packages/shared/src"]
+    }
+  },
+  "include": ["src"]
+}
