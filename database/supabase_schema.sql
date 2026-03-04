@@ -1,273 +1,209 @@
--- =============================================
--- GingaFlow - Schema Supabase
--- Gerado em: 2026-02-23
--- Baseado no schema Prisma atual (SQLite)
--- =============================================
+-- GingaFlow - ULTIMATE Multi-tenant Supabase Schema
+-- Paste this into the Supabase SQL Editor
 
--- Habilitar extensão UUID
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- =============================================
--- ENUMS
--- =============================================
-CREATE TYPE student_status AS ENUM ('ATIVO', 'INATIVO', 'SUSPENSO');
-CREATE TYPE user_role AS ENUM ('ADMIN', 'TEACHER', 'STUDENT');
-CREATE TYPE unit_status AS ENUM ('ATIVA', 'INATIVA');
-CREATE TYPE turma_status AS ENUM ('ATIVA', 'INATIVA');
-CREATE TYPE teacher_status AS ENUM ('ATIVO', 'INATIVO');
-CREATE TYPE payment_status AS ENUM ('PENDENTE', 'PAGO', 'ATRASADO', 'CANCELADO');
-CREATE TYPE attendance_status AS ENUM ('PRESENT', 'ABSENT', 'JUSTIFIED');
-CREATE TYPE corda_type AS ENUM ('UNICA', 'DUPLA', 'COM_PONTAS');
-
--- =============================================
--- TABELA: users (autenticação + papéis)
--- =============================================
-CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name            TEXT NOT NULL,
-    email           TEXT UNIQUE NOT NULL,
-    password_hash   TEXT NOT NULL,
-    role            user_role NOT NULL DEFAULT 'ADMIN',
-    active          BOOLEAN NOT NULL DEFAULT TRUE,
-    related_id      UUID,                  -- referência ao professor ou aluno
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- 1. Create Tables
+CREATE TABLE "Organization" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "name" TEXT NOT NULL,
+    "document" TEXT UNIQUE,
+    "plan" TEXT NOT NULL DEFAULT 'FREE',
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- =============================================
--- TABELA: app_settings (configurações globais)
--- =============================================
-CREATE TABLE app_settings (
-    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    group_name           TEXT NOT NULL DEFAULT 'Grupo de Capoeira',
-    logo_url             TEXT,
-    theme_color          TEXT NOT NULL DEFAULT 'blue',
-    default_monthly_fee  INTEGER NOT NULL DEFAULT 0,  -- em centavos
-    default_payment_method TEXT NOT NULL DEFAULT 'PIX',
-    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE "User" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "name" TEXT NOT NULL,
+    "email" TEXT UNIQUE NOT NULL,
+    "password_hash" TEXT NOT NULL,
+    "role" TEXT NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "relatedId" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- =============================================
--- TABELA: graduation_levels (configuração de graduações)
--- =============================================
-CREATE TABLE graduation_levels (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        TEXT NOT NULL,
-    description TEXT,
-    category    TEXT,                -- Ex: 'CRIANCA', 'ADULTO'
-    grau        INTEGER,
-    corda_type  corda_type,
-    color       TEXT,
-    color_left  TEXT,
-    color_right TEXT,
-    ponta_left  TEXT,
-    ponta_right TEXT,
-    "order"     INTEGER NOT NULL DEFAULT 0,
-    active      BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE "Student" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "full_name" TEXT NOT NULL,
+    "nickname" TEXT,
+    "cpf" TEXT NOT NULL,
+    "birth_date" TEXT,
+    "email" TEXT,
+    "phone" TEXT,
+    "enrollment_date" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "notes" TEXT,
+    "currentGraduationId" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE UNIQUE INDEX "Student_org_cpf_unique" ON "Student"("organizationId", "cpf");
+
+CREATE TABLE "Teacher" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "full_name" TEXT NOT NULL,
+    "nickname" TEXT,
+    "cpf" TEXT NOT NULL,
+    "birth_date" TEXT,
+    "email" TEXT,
+    "phone" TEXT,
+    "graduation" TEXT,
+    "status" TEXT NOT NULL,
+    "notes" TEXT,
+    "userId" TEXT UNIQUE REFERENCES "User"("id"),
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE UNIQUE INDEX "Teacher_org_cpf_unique" ON "Teacher"("organizationId", "cpf");
+
+CREATE TABLE "Unit" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "name" TEXT NOT NULL,
+    "address" TEXT,
+    "color" TEXT,
+    "defaultMonthlyFeeCents" INTEGER,
+    "defaultPaymentMethod" TEXT,
+    "status" TEXT NOT NULL,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- =============================================
--- TABELA: units (unidades/academias)
--- =============================================
-CREATE TABLE units (
-    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name                     TEXT NOT NULL,
-    address                  TEXT,
-    color                    TEXT,
-    default_monthly_fee_cents INTEGER,
-    default_payment_method   TEXT,
-    status                   unit_status NOT NULL DEFAULT 'ATIVA',
-    created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE "ActivityType" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "name" TEXT NOT NULL,
+    "usaGraduacao" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX "ActivityType_org_name_unique" ON "ActivityType"("organizationId", "name");
+
+CREATE TABLE "Turma" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "name" TEXT NOT NULL,
+    "unitId" TEXT NOT NULL REFERENCES "Unit"("id") ON DELETE CASCADE,
+    "activityTypeId" TEXT REFERENCES "ActivityType"("id"),
+    "teacherId" TEXT REFERENCES "Teacher"("id"),
+    "schedule" TEXT,
+    "defaultMonthlyFeeCents" INTEGER,
+    "defaultPaymentMethod" TEXT,
+    "status" TEXT NOT NULL,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- =============================================
--- TABELA: turmas (classes por unidade)
--- =============================================
-CREATE TABLE turmas (
-    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name                     TEXT NOT NULL,
-    unit_id                  UUID NOT NULL REFERENCES units(id) ON DELETE CASCADE,
-    schedule                 TEXT,         -- Ex: "SEG 18:00, QUA 18:00"
-    default_monthly_fee_cents INTEGER,
-    default_payment_method   TEXT,
-    status                   turma_status NOT NULL DEFAULT 'ATIVA',
-    created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE "StudentTurma" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "studentId" TEXT NOT NULL REFERENCES "Student"("id") ON DELETE CASCADE,
+    "turmaId" TEXT NOT NULL REFERENCES "Turma"("id") ON DELETE CASCADE,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_turmas_unit_id ON turmas(unit_id);
+CREATE UNIQUE INDEX "StudentTurma_unique" ON "StudentTurma"("studentId", "turmaId");
 
--- =============================================
--- TABELA: students (alunos)
--- =============================================
-CREATE TABLE students (
-    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    full_name              TEXT NOT NULL,
-    cpf                    TEXT UNIQUE NOT NULL,
-    birth_date             DATE,
-    email                  TEXT,
-    phone                  TEXT,
-    enrollment_date        DATE NOT NULL DEFAULT CURRENT_DATE,
-    status                 student_status NOT NULL DEFAULT 'ATIVO',
-    notes                  TEXT,
-    current_graduation_id  UUID REFERENCES graduation_levels(id),
-    -- Dados do responsável (quando menor de idade)
-    guardian_name          TEXT,
-    guardian_cpf           TEXT,
-    guardian_phone         TEXT,
-    guardian_relationship  TEXT,
-    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE "TeacherTurma" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "teacherId" TEXT NOT NULL REFERENCES "Teacher"("id") ON DELETE CASCADE,
+    "turmaId" TEXT NOT NULL REFERENCES "Turma"("id") ON DELETE CASCADE,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_students_cpf ON students(cpf);
-CREATE INDEX idx_students_status ON students(status);
-CREATE INDEX idx_students_full_name ON students USING GIN (to_tsvector('portuguese', full_name));
+CREATE UNIQUE INDEX "TeacherTurma_unique" ON "TeacherTurma"("teacherId", "turmaId");
 
--- =============================================
--- TABELA: teachers (professores)
--- =============================================
-CREATE TABLE teachers (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    full_name       TEXT NOT NULL,
-    cpf             TEXT UNIQUE NOT NULL,
-    email           TEXT,
-    phone           TEXT,
-    capoeira_name   TEXT,               -- apelido de capoeira
-    graduation      TEXT,               -- nome da graduação atual
-    birth_date      DATE,
-    address         TEXT,
-    status          teacher_status NOT NULL DEFAULT 'ATIVO',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX idx_teachers_cpf ON teachers(cpf);
-
--- =============================================
--- TABELA: teacher_turmas (professor vinculado à turma)
--- =============================================
-CREATE TABLE teacher_turmas (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id  UUID NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
-    turma_id    UUID NOT NULL REFERENCES turmas(id) ON DELETE CASCADE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(teacher_id, turma_id)
+CREATE TABLE "StudentActivity" (
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "studentId" TEXT NOT NULL REFERENCES "Student"("id") ON DELETE CASCADE,
+    "activityTypeId" TEXT NOT NULL REFERENCES "ActivityType"("id") ON DELETE CASCADE,
+    PRIMARY KEY ("studentId", "activityTypeId")
 );
 
--- =============================================
--- TABELA: student_turmas (aluno vinculado à turma)
--- =============================================
-CREATE TABLE student_turmas (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id  UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    turma_id    UUID NOT NULL REFERENCES turmas(id) ON DELETE CASCADE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(student_id, turma_id)
+CREATE TABLE "Payment" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "studentId" TEXT NOT NULL REFERENCES "Student"("id") ON DELETE CASCADE,
+    "monthlyFeeCents" INTEGER NOT NULL,
+    "dueDay" INTEGER NOT NULL,
+    "period" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "paidAt" TIMESTAMP WITH TIME ZONE,
+    "method" TEXT,
+    "notes" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX "Payment_unique" ON "Payment"("studentId", "period");
+
+CREATE TABLE "Graduation" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "studentId" TEXT NOT NULL REFERENCES "Student"("id") ON DELETE CASCADE,
+    "previousGraduationId" TEXT,
+    "newGraduationId" TEXT NOT NULL,
+    "date" TEXT NOT NULL,
+    "teacherId" TEXT REFERENCES "Teacher"("id"),
+    "type" TEXT NOT NULL,
+    "notes" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- =============================================
--- TABELA: graduations (histórico de graduações)
--- =============================================
-CREATE TABLE graduations (
-    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id            UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    previous_level_id     UUID REFERENCES graduation_levels(id),
-    new_level_id          UUID NOT NULL REFERENCES graduation_levels(id),
-    date                  DATE NOT NULL,
-    teacher_id            UUID REFERENCES teachers(id),
-    type                  TEXT NOT NULL,     -- Ex: 'BATIZADO', 'TROCA_DE_CORDA'
-    notes                 TEXT,
-    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE "Attendance" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "studentId" TEXT NOT NULL REFERENCES "Student"("id") ON DELETE CASCADE,
+    "turmaId" TEXT NOT NULL REFERENCES "Turma"("id") ON DELETE CASCADE,
+    "date" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "notes" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_graduations_student_id ON graduations(student_id);
+CREATE UNIQUE INDEX "Attendance_unique" ON "Attendance"("studentId", "turmaId", "date");
 
--- =============================================
--- TABELA: payments (pagamentos/mensalidades)
--- =============================================
-CREATE TABLE payments (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id         UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    monthly_fee_cents  INTEGER NOT NULL,
-    due_day            INTEGER NOT NULL,          -- dia do mês: 1-31
-    period             TEXT NOT NULL,             -- Ex: '2026-01'
-    status             payment_status NOT NULL DEFAULT 'PENDENTE',
-    paid_at            TIMESTAMPTZ,
-    method             TEXT,
-    notes              TEXT,
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(student_id, period)
+CREATE TABLE "AppSettings" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT UNIQUE NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "groupName" TEXT NOT NULL DEFAULT 'Grupo de Capoeira',
+    "logoUrl" TEXT,
+    "themeColor" TEXT NOT NULL DEFAULT 'blue',
+    "defaultMonthlyFee" INTEGER NOT NULL DEFAULT 0,
+    "defaultPaymentMethod" TEXT NOT NULL DEFAULT 'PIX',
+    "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_payments_student_id ON payments(student_id);
-CREATE INDEX idx_payments_status ON payments(status);
-CREATE INDEX idx_payments_period ON payments(period);
 
--- =============================================
--- TABELA: attendances (chamada/frequência)
--- =============================================
-CREATE TABLE attendances (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id  UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    turma_id    UUID NOT NULL REFERENCES turmas(id) ON DELETE CASCADE,
-    date        DATE NOT NULL,
-    status      attendance_status NOT NULL DEFAULT 'PRESENT',
-    notes       TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(student_id, turma_id, date)
+CREATE TABLE "GraduationLevel" (
+    "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "category" TEXT,
+    "grau" INTEGER,
+    "cordaType" TEXT,
+    "color" TEXT,
+    "colorLeft" TEXT,
+    "colorRight" TEXT,
+    "pontaLeft" TEXT,
+    "pontaRight" TEXT,
+    "order" INTEGER NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_attendances_turma_date ON attendances(turma_id, date);
 
--- =============================================
--- TRIGGERS: auto-update updated_at
--- =============================================
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+-- 2. Insert Default Organization
+INSERT INTO "Organization" (id, name, document) 
+VALUES ('b47b4b1a-0b3b-4b1a-9c1a-1a2b3c4d5e6f', 'GingaFlow Matriz', '00000000001');
 
-CREATE TRIGGER update_users_updated_at          BEFORE UPDATE ON users          FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_units_updated_at          BEFORE UPDATE ON units          FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_turmas_updated_at         BEFORE UPDATE ON turmas         FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_students_updated_at       BEFORE UPDATE ON students       FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_teachers_updated_at       BEFORE UPDATE ON teachers       FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_payments_updated_at       BEFORE UPDATE ON payments       FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_attendances_updated_at    BEFORE UPDATE ON attendances    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_grad_levels_updated_at    BEFORE UPDATE ON graduation_levels FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- 3. Insert Default Admin User
+INSERT INTO "User" ("organizationId", name, email, password_hash, role) 
+VALUES ('b47b4b1a-0b3b-4b1a-9c1a-1a2b3c4d5e6f', 'Mestre Administrador', 'admin@gingaflow.com', '$2b$10$7EqIF5s73Gsl4WNoX.4E4OxO0iUuM.e8zXJ1K/s5.s/qYJvOEXpW2', 'ADMIN');
 
--- =============================================
--- RLS (Row Level Security) - Base
--- =============================================
-ALTER TABLE users         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE students      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE teachers      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payments      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE attendances   ENABLE ROW LEVEL SECURITY;
-
--- Política básica: apenas usuários autenticados podem ver dados
--- (Expandir com políticas por role quando adicionar auth Supabase)
-CREATE POLICY "authenticated_all" ON students    FOR ALL TO authenticated USING (true);
-CREATE POLICY "authenticated_all" ON teachers    FOR ALL TO authenticated USING (true);
-CREATE POLICY "authenticated_all" ON payments    FOR ALL TO authenticated USING (true);
-CREATE POLICY "authenticated_all" ON attendances FOR ALL TO authenticated USING (true);
-CREATE POLICY "authenticated_all" ON units       FOR ALL TO authenticated USING (true);
-CREATE POLICY "authenticated_all" ON turmas      FOR ALL TO authenticated USING (true);
-
--- =============================================
--- SEED: Dados iniciais obrigatórios
--- =============================================
-INSERT INTO app_settings (group_name, theme_color, default_payment_method) 
-VALUES ('Grupo de Capoeira', 'blue', 'PIX');
-
--- Usuário admin padrão (senha: admin123 - bcrypt hash)
-INSERT INTO users (name, email, password_hash, role)
-VALUES (
-    'Administrador', 
-    'admin@gingaflow.local',
-    '$2b$10$n9FRDdA73ILr5OGRqjVYQeVxq3NvGJcwqEj1qe.IHxBE8mHiKxBWC',
-    'ADMIN'
-);
+-- 4. Default Settings
+INSERT INTO "AppSettings" ("organizationId", "groupName") 
+VALUES ('b47b4b1a-0b3b-4b1a-9c1a-1a2b3c4d5e6f', 'GingaFlow Escola Modelo');

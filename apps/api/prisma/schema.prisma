@@ -3,15 +3,63 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Organization {
+  id             String    @id @default(uuid())
+  name           String    
+  document       String?   @unique 
+  plan           String    @default("FREE") 
+  active         Boolean   @default(true)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  users          User[]
+  students       Student[]
+  teachers       Teacher[]
+  units          Unit[]
+  turmas         Turma[]
+  activityTypes  ActivityType[]
+  graduationLevels GraduationLevel[]
+  settings       AppSettings?
+  
+  // Relações para as tabelas de ligação/histórico (opcional no Prisma, mas bom para integridade)
+  payments       Payment[]
+  graduations    Graduation[]
+  attendances    Attendance[]
+  studentTurmas  StudentTurma[]
+  teacherTurmas  TeacherTurma[]
+  studentActivities StudentActivity[]
+}
+
+model User {
+  id            String   @id @default(uuid())
+  organizationId String
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name          String
+  email         String   @unique
+  password_hash String
+  role          String   
+  active        Boolean  @default(true)
+  relatedId     String?  
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  
+  teacher       Teacher?
 }
 
 model Student {
   id             String        @id @default(uuid())
+  organizationId String
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   full_name      String
-  nickname       String?       // Nome artístico / Apelido
-  cpf            String        @unique
+  nickname       String?       
+  cpf            String        
   birth_date     String?
   email          String?
   phone          String?
@@ -19,28 +67,33 @@ model Student {
   status         String
   notes          String?
   currentGraduationId String?
+  
   created_at     DateTime      @default(now())
   updated_at     DateTime      @updatedAt
+  
   payments       Payment[]
   graduations    Graduation[]
   studentTurmas  StudentTurma[]
   attendances    Attendance[]
   activities     StudentActivity[]
+
+  @@unique([organizationId, cpf]) 
 }
 
 model Teacher {
   id             String        @id @default(uuid())
+  organizationId String
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   full_name      String
-  nickname       String?       // Nome artístico / Apelido
-  cpf            String        @unique
+  nickname       String?       
+  cpf            String        
   birth_date     String?
   email          String?
   phone          String?
   graduation     String?
   status         String
   notes          String?
-  created_at     DateTime      @default(now())
-  updated_at     DateTime      @updatedAt
   
   userId         String?       @unique
   user           User?         @relation(fields: [userId], references: [id])
@@ -48,10 +101,59 @@ model Teacher {
   turmas         Turma[]       @relation("TurmaTeacher")
   teacherTurmas  TeacherTurma[] @relation("TeacherTurmaRel")
   promotedGraduations Graduation[] @relation("PromoterTeacher")
+
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+
+  @@unique([organizationId, cpf])
+}
+
+model Unit {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name           String
+  address        String?
+  color          String?
+  defaultMonthlyFeeCents Int?
+  defaultPaymentMethod   String?
+  status         String
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  
+  turmas         Turma[]
+}
+
+model Turma {
+  id             String         @id @default(uuid())
+  organizationId String
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name           String
+  unitId         String
+  unit           Unit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  activityTypeId String?
+  activityType   ActivityType?  @relation(fields: [activityTypeId], references: [id])
+  teacherId    String?
+  teacher      Teacher?       @relation("TurmaTeacher", fields: [teacherId], references: [id])
+  schedule     String?
+  defaultMonthlyFeeCents Int?
+  defaultPaymentMethod   String?
+  status       String
+  created_at   DateTime       @default(now())
+  updated_at   DateTime       @updatedAt
+  
+  teacherLinks TeacherTurma[]
+  studentLinks StudentTurma[]
+  attendances  Attendance[]
 }
 
 model Payment {
   id              String    @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   studentId       String
   student         Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   monthlyFeeCents Int
@@ -68,7 +170,10 @@ model Payment {
 }
 
 model Graduation {
-  id          String   @id @default(uuid())
+  id              String   @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   studentId   String
   student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   previousGraduationId String?
@@ -81,67 +186,15 @@ model Graduation {
   created_at  DateTime @default(now())
 }
 
-model Unit {
-  id         String   @id @default(uuid())
-  name       String
-  address    String?
-  color      String?
-  defaultMonthlyFeeCents Int?
-  defaultPaymentMethod   String?
-  status     String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  turmas     Turma[]
-}
-
-model Turma {
-  id           String         @id @default(uuid())
-  name         String
-  unitId       String
-  unit         Unit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  activityTypeId String?
-  activityType   ActivityType?  @relation(fields: [activityTypeId], references: [id])
-  teacherId    String?
-  teacher      Teacher?       @relation("TurmaTeacher", fields: [teacherId], references: [id])
-  schedule     String?
-  defaultMonthlyFeeCents Int?
-  defaultPaymentMethod   String?
-  status       String
-  created_at   DateTime       @default(now())
-  updated_at   DateTime       @updatedAt
-  teacherLinks TeacherTurma[]
-  studentLinks StudentTurma[]
-  attendances  Attendance[]
-}
-
-model TeacherTurma {
-  id         String   @id @default(uuid())
-  teacherId  String
-  turmaId    String
-  created_at DateTime @default(now())
-  teacher    Teacher  @relation("TeacherTurmaRel", fields: [teacherId], references: [id], onDelete: Cascade)
-  turma      Turma    @relation(fields: [turmaId], references: [id], onDelete: Cascade)
-
-  @@unique([teacherId, turmaId])
-}
-
-model StudentTurma {
-  id         String   @id @default(uuid())
-  studentId  String
-  turmaId    String
-  created_at DateTime @default(now())
-  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  turma      Turma    @relation(fields: [turmaId], references: [id], onDelete: Cascade)
-
-  @@unique([studentId, turmaId])
-}
-
 model Attendance {
-  id         String   @id @default(uuid())
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   studentId  String
   turmaId    String
   date       String
-  status     String   // PRESENT, ABSENT
+  status     String   
   notes      String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -152,21 +205,11 @@ model Attendance {
   @@unique([studentId, turmaId, date])
 }
 
-model User {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  password_hash String
-  role          String   // ADMIN, PROFESSOR
-  active        Boolean  @default(true)
-  relatedId     String?
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-  teacher       Teacher?
-}
-
 model AppSettings {
-  id                   String   @id @default(uuid()) // Usually only one record
+  id                   String   @id @default(uuid())
+  organizationId       String   @unique
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   groupName            String   @default("Grupo de Capoeira")
   logoUrl              String?
   themeColor           String   @default("blue")
@@ -176,12 +219,15 @@ model AppSettings {
 }
 
 model GraduationLevel {
-  id          String   @id @default(uuid())
+  id             String   @id @default(uuid())
+  organizationId String
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   name        String
   description String?
   category    String?
   grau        Int?
-  cordaType   String?  // UNICA, DUPLA, COM_PONTAS
+  cordaType   String?  
   color       String?
   colorLeft   String?
   colorRight  String?
@@ -194,16 +240,53 @@ model GraduationLevel {
 }
 
 model ActivityType {
-  id           String    @id @default(uuid())
-  name         String    @unique
+  id             String    @id @default(uuid())
+  organizationId String
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name         String    
   usaGraduacao Boolean   @default(true)
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
+  
   students     StudentActivity[]
   turmas       Turma[]
+
+  @@unique([organizationId, name])
+}
+
+model TeacherTurma {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  teacherId  String
+  turmaId    String
+  created_at DateTime @default(now())
+  teacher    Teacher  @relation("TeacherTurmaRel", fields: [teacherId], references: [id], onDelete: Cascade)
+  turma      Turma    @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, turmaId])
+}
+
+model StudentTurma {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  studentId  String
+  turmaId    String
+  created_at DateTime @default(now())
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  turma      Turma    @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, turmaId])
 }
 
 model StudentActivity {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   studentId      String
   activityTypeId String
   student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)

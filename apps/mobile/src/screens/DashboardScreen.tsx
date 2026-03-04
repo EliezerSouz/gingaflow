@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
 import { Card } from '../components/ui/Card';
@@ -85,19 +85,39 @@ export default function DashboardScreen() {
         }
     }
 
-    useEffect(() => {
-        loadMetrics();
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            loadMetrics();
+        }, [])
+    );
 
-    function MetricCard({ icon, title, value, color, onPress }: any) {
+    function UnifiedMetricCard({ icon, title, value, subValue, label, color, onPress }: any) {
         return (
-            <TouchableOpacity onPress={onPress} disabled={!onPress}>
+            <TouchableOpacity
+                style={styles.unifiedCardWrapper}
+                onPress={onPress}
+                disabled={!onPress}
+                activeOpacity={0.7}
+            >
                 <Card style={styles.metricCard}>
-                    <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-                        <Ionicons name={icon} size={24} color={color} />
+                    <View style={styles.cardHeader}>
+                        <View style={[styles.iconContainer, { backgroundColor: color + '15' }]}>
+                            <Ionicons name={icon} size={22} color={color} />
+                        </View>
+                        <View style={styles.badgeContainer}>
+                            <Text style={[styles.badgeText, { color: color }]}>{title}</Text>
+                        </View>
                     </View>
-                    <Text style={styles.metricValue}>{value}</Text>
-                    <Text style={styles.metricTitle}>{title}</Text>
+
+                    <View style={styles.cardBody}>
+                        <Text style={styles.metricValue}>{value}</Text>
+                        {subValue !== undefined && (
+                            <View style={styles.subValueContainer}>
+                                <Text style={styles.subValueLabel}>{label}: </Text>
+                                <Text style={styles.subValueText}>{subValue}</Text>
+                            </View>
+                        )}
+                    </View>
                 </Card>
             </TouchableOpacity>
         );
@@ -119,68 +139,71 @@ export default function DashboardScreen() {
                 contentContainerStyle={styles.content}
                 refreshControl={<RefreshControl refreshing={loading} onRefresh={loadMetrics} />}
             >
-                {/* Métricas */}
+                {/* Métricas Principais */}
                 <View style={styles.metricsGrid}>
-                    <MetricCard
+                    <UnifiedMetricCard
                         icon="people"
-                        title="Total de alunos"
-                        value={metrics.totalStudents}
-                        color="#4F46E5"
-                        onPress={() => navigation.navigate('Acadêmico')}
-                    />
-                    <MetricCard
-                        icon="checkmark-circle"
-                        title="Alunos ativos"
+                        title="ALUNOS"
                         value={metrics.activeStudents}
-                        color="#10B981"
+                        label="Total"
+                        subValue={metrics.totalStudents}
+                        color="#4F46E5"
                         onPress={() => navigation.navigate('Acadêmico')}
                     />
 
                     {user?.role === 'ADMIN' && (
+                        <UnifiedMetricCard
+                            icon="school"
+                            title="PROFESSORES"
+                            value={metrics.activeTeachers}
+                            label="Total"
+                            subValue={metrics.totalTeachers}
+                            color="#8B5CF6"
+                            onPress={() => navigation.navigate('Teachers')}
+                        />
+                    )}
+                </View>
+
+                {/* Métricas Secundárias */}
+                <View style={styles.secondaryGrid}>
+                    {user?.role === 'ADMIN' && (
                         <>
-                            <MetricCard
-                                icon="business"
-                                title="Unidades"
-                                value={metrics.totalUnits}
-                                color="#EF4444"
+                            <TouchableOpacity
+                                style={styles.miniCard}
                                 onPress={() => navigation.navigate('Units')}
-                            />
-                            <MetricCard
-                                icon="people-circle"
-                                title="Turmas"
-                                value={metrics.totalTurmas}
-                                color="#3B82F6"
+                            >
+                                <Ionicons name="business" size={18} color="#EF4444" />
+                                <View style={styles.miniCardContent}>
+                                    <Text style={styles.miniCardValue}>{metrics.totalUnits}</Text>
+                                    <Text style={styles.miniCardLabel}>Unidades</Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.miniCard}
                                 onPress={() => navigation.navigate('Turmas')}
-                            />
-                            <MetricCard
-                                icon="school"
-                                title="Professores"
-                                value={metrics.totalTeachers}
-                                color="#6366F1"
-                                onPress={() => navigation.navigate('Teachers')}
-                            />
-                            <MetricCard
-                                icon="shield-checkmark"
-                                title="Professores ativos"
-                                value={metrics.activeTeachers}
-                                color="#8B5CF6"
-                                onPress={() => navigation.navigate('Teachers')}
-                            />
+                            >
+                                <Ionicons name="people-circle" size={18} color="#3B82F6" />
+                                <View style={styles.miniCardContent}>
+                                    <Text style={styles.miniCardValue}>{metrics.totalTurmas}</Text>
+                                    <Text style={styles.miniCardLabel}>Turmas</Text>
+                                </View>
+                            </TouchableOpacity>
                         </>
                     )}
+                </View>
 
-                    <MetricCard
-                        icon="alert-circle"
-                        title="Inadimplentes"
-                        value={metrics.overduePayments}
-                        color="#EF4444"
-                    />
-                    <MetricCard
-                        icon="calendar"
-                        title="Próximos vencimentos"
-                        value={metrics.upcomingDues}
-                        color="#F59E0B"
-                    />
+                {/* Financeiro */}
+                <View style={styles.financeRow}>
+                    <TouchableOpacity style={[styles.financeCard, { borderLeftColor: '#EF4444' }]}>
+                        <Text style={styles.financeLabel}>Inadimplentes</Text>
+                        <Text style={[styles.financeValue, { color: '#EF4444' }]}>{metrics.overduePayments}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.financeCard, { borderLeftColor: '#F59E0B' }]}>
+                        <Text style={styles.financeLabel}>A vencer</Text>
+                        <Text style={[styles.financeValue, { color: '#F59E0B' }]}>{metrics.upcomingDues}</Text>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Próximas Aulas */}
@@ -299,41 +322,173 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#E5E7EB'
     },
-    greeting: { fontSize: 24, fontWeight: 'bold', color: '#111827' },
-    subtitle: { fontSize: 14, color: '#6B7280', marginTop: 2 },
-    menuButton: { padding: 8 },
-    content: { padding: 16 },
-    metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 16 },
-    metricCard: {
+    greeting: { fontSize: 26, fontWeight: 'bold', color: '#111827' },
+    subtitle: { fontSize: 13, color: '#6B7280', marginTop: 2, fontWeight: '500' },
+    menuButton: {
+        padding: 10,
+        backgroundColor: '#F3F4F6',
+        borderRadius: 12
+    },
+    content: { padding: 16, paddingBottom: 40 },
+
+    // Unified Metrics
+    metricsGrid: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 12
+    },
+    unifiedCardWrapper: {
         flex: 1,
-        minWidth: '47%',
+    },
+    metricCard: {
+        padding: 16,
+        borderRadius: 20,
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 16
+        marginBottom: 12
+    },
+    badgeContainer: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+        backgroundColor: '#F9FAFB'
+    },
+    badgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        letterSpacing: 0.5
     },
     iconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
+        width: 40,
+        height: 40,
+        borderRadius: 12,
         alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 8
+        justifyContent: 'center'
     },
-    metricValue: { fontSize: 28, fontWeight: 'bold', color: '#111827', marginBottom: 4 },
-    metricTitle: { fontSize: 12, color: '#6B7280', textAlign: 'center' },
-    sectionCard: { marginBottom: 16 },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
-    sectionLink: { fontSize: 14, color: '#4F46E5', fontWeight: '600' },
-    placeholder: { fontSize: 14, color: '#9CA3AF', fontStyle: 'italic' },
-    quickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 },
-    quickAction: { alignItems: 'center', width: '22%' },
+    cardBody: {
+        alignItems: 'flex-start'
+    },
+    metricValue: {
+        fontSize: 32,
+        fontWeight: '800',
+        color: '#111827',
+        lineHeight: 36
+    },
+    subValueContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4
+    },
+    subValueLabel: {
+        fontSize: 12,
+        color: '#9CA3AF'
+    },
+    subValueText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#6B7280'
+    },
+
+    // Secondary Grid
+    secondaryGrid: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 16
+    },
+    miniCard: {
+        flex: 1,
+        backgroundColor: '#FFF',
+        borderRadius: 16,
+        padding: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        borderWidth: 1,
+        borderColor: '#F3F4F6'
+    },
+    miniCardContent: {
+        flex: 1
+    },
+    miniCardValue: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#111827'
+    },
+    miniCardLabel: {
+        fontSize: 11,
+        color: '#6B7280'
+    },
+
+    // Finance Row
+    financeRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 20
+    },
+    financeCard: {
+        flex: 1,
+        backgroundColor: '#FFF',
+        padding: 12,
+        borderRadius: 12,
+        borderLeftWidth: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2
+    },
+    financeLabel: {
+        fontSize: 11,
+        color: '#6B7280',
+        fontWeight: '600',
+        marginBottom: 2
+    },
+    financeValue: {
+        fontSize: 18,
+        fontWeight: '800'
+    },
+
+    sectionCard: {
+        marginBottom: 20,
+        borderRadius: 20,
+        padding: 16
+    },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+    sectionLink: { fontSize: 14, color: '#4F46E5', fontWeight: '700' },
+    placeholder: { fontSize: 14, color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center', marginVertical: 20 },
+
+    quickActions: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        marginTop: 8
+    },
+    quickAction: {
+        alignItems: 'center',
+        width: '23%',
+        marginBottom: 16
+    },
     quickActionIcon: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 52,
+        height: 52,
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 8
+        marginBottom: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3
     },
-    quickActionText: { fontSize: 11, color: '#374151', textAlign: 'center', fontWeight: '500' }
+    quickActionText: {
+        fontSize: 10,
+        color: '#4B5563',
+        textAlign: 'center',
+        fontWeight: '600'
+    }
 });

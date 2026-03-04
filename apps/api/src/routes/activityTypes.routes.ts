@@ -4,13 +4,20 @@ import { z } from 'zod'
 
 export async function registerActivityTypesRoutes(server: FastifyInstance) {
     server.get('/activity-types', async (req, reply) => {
+        const user = (req as any).currentUser
+        if (!user) return reply.status(401).send({ code: 'UNAUTHORIZED' })
+
         const activityTypes = await prisma.activityType.findMany({
+            where: { organizationId: user.organizationId },
             orderBy: { created_at: 'asc' }
         })
         return activityTypes
     })
 
     server.post('/activity-types', async (req, reply) => {
+        const user = (req as any).currentUser
+        if (!user) return reply.status(401).send({ code: 'UNAUTHORIZED' })
+
         const schema = z.object({
             name: z.string(),
             usaGraduacao: z.boolean().default(true)
@@ -19,13 +26,19 @@ export async function registerActivityTypesRoutes(server: FastifyInstance) {
         const data = schema.parse(req.body)
 
         const activityType = await prisma.activityType.create({
-            data
+            data: {
+                ...data,
+                organizationId: user.organizationId
+            }
         })
 
         return activityType
     })
 
     server.put('/activity-types/:id', async (req, reply) => {
+        const user = (req as any).currentUser
+        if (!user) return reply.status(401).send({ code: 'UNAUTHORIZED' })
+
         const paramsSchema = z.object({
             id: z.string().uuid()
         })
@@ -38,7 +51,7 @@ export async function registerActivityTypesRoutes(server: FastifyInstance) {
         const data = bodySchema.parse(req.body)
 
         const activityType = await prisma.activityType.update({
-            where: { id },
+            where: { id, organizationId: user.organizationId },
             data
         })
 
@@ -46,6 +59,9 @@ export async function registerActivityTypesRoutes(server: FastifyInstance) {
     })
 
     server.delete('/activity-types/:id', async (req, reply) => {
+        const user = (req as any).currentUser
+        if (!user) return reply.status(401).send({ code: 'UNAUTHORIZED' })
+
         const paramsSchema = z.object({
             id: z.string().uuid()
         })
@@ -53,7 +69,7 @@ export async function registerActivityTypesRoutes(server: FastifyInstance) {
         const { id } = paramsSchema.parse(req.params)
 
         await prisma.activityType.delete({
-            where: { id }
+            where: { id, organizationId: user.organizationId }
         })
 
         return { success: true }

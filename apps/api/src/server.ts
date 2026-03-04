@@ -57,11 +57,26 @@ server.setErrorHandler((error, request, reply) => {
 server.get('/health', async () => ({ status: 'ok' }))
 
 async function ensureUsers() {
-  const count = await prisma.user.count()
-  if (count === 0) {
+  let org = await prisma.organization.findFirst()
+  if (!org) {
+    org = await prisma.organization.create({
+      data: {
+        name: 'GingaFlow Matriz',
+        plan: 'ADMIN'
+      }
+    })
+    server.log.info('seeded-default-org')
+  }
+
+  const specificUser = await prisma.user.findUnique({
+    where: { email: 'admin@gingaflow.local' }
+  })
+
+  if (!specificUser) {
     const passwordHash = bcrypt.hashSync('admin123', 10)
     await prisma.user.create({
       data: {
+        organizationId: org.id,
         name: 'Admin',
         email: 'admin@gingaflow.local',
         role: 'ADMIN',
@@ -74,10 +89,16 @@ async function ensureUsers() {
 }
 
 async function ensureSettings() {
-  const settings = await prisma.appSettings.findFirst()
+  const org = await prisma.organization.findFirst()
+  if (!org) return
+
+  const settings = await prisma.appSettings.findFirst({
+    where: { organizationId: org.id }
+  })
   if (!settings) {
     await prisma.appSettings.create({
       data: {
+        organizationId: org.id,
         groupName: 'Grupo de Capoeira',
         themeColor: 'blue',
         defaultMonthlyFee: 0,
@@ -89,31 +110,27 @@ async function ensureSettings() {
 }
 
 async function ensureActivityTypes() {
+  const org = await prisma.organization.findFirst()
+  if (!org) return
+
   let capoeira = await prisma.activityType.findUnique({
-    where: { name: 'Capoeira' }
+    where: {
+      organizationId_name: {
+        organizationId: org.id,
+        name: 'Capoeira'
+      }
+    }
   })
 
   if (!capoeira) {
     await prisma.activityType.create({
-      data: { name: 'Capoeira', usaGraduacao: true }
+      data: {
+        organizationId: org.id,
+        name: 'Capoeira',
+        usaGraduacao: true
+      }
     })
     server.log.info('seeded-capoeira')
-  }
-
-  const personal = await prisma.activityType.findUnique({ where: { name: 'Personal' } })
-  if (!personal) {
-    await prisma.activityType.create({
-      data: { name: 'Personal', usaGraduacao: false }
-    })
-    server.log.info('seeded-personal')
-  }
-
-  const spinning = await prisma.activityType.findUnique({ where: { name: 'Spinning' } })
-  if (!spinning) {
-    await prisma.activityType.create({
-      data: { name: 'Spinning', usaGraduacao: false }
-    })
-    server.log.info('seeded-spinning')
   }
 }
 
@@ -137,25 +154,31 @@ server.post('/auth/login', async (req, reply) => {
     where: { email: payload.email }
   })
 
-  // Case insensitive check if needed, but email should be unique/normalized
-  // If not found directly, strictly reject
   if (!user) {
+    server.log.warn({ email: payload.email }, 'login-failed-user-not-found')
     return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Credenciais inválidas' })
   }
 
   if (user.active === false) {
+    server.log.warn({ email: payload.email }, 'login-failed-user-inactive')
     return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Usuário inativo' })
   }
 
   const ok = bcrypt.compareSync(payload.password, user.password_hash)
   if (!ok) {
+    server.log.warn({ email: payload.email }, 'login-failed-password-mismatch')
     return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Credenciais inválidas' })
   }
 
-  const token = await reply.jwtSign({ sub: user.id, role: user.role })
-  // Fix: Ensure proper parsing or explicit object construction for UserSchema
+  const token = await reply.jwtSign({
+    sub: user.id,
+    role: user.role,
+    orgId: user.organizationId
+  })
+
   const safeUser = UserSchema.parse({
     id: user.id,
+    organizationId: user.organizationId,
     name: user.name,
     email: user.email,
     role: user.role as 'ADMIN' | 'PROFESSOR',
@@ -191,6 +214,7 @@ server.get('/me', async (req, reply) => {
   }
   const safeUser = UserSchema.parse({
     id: user.id,
+    organizationId: user.organizationId,
     name: user.name,
     email: user.email,
     role: user.role as 'ADMIN' | 'PROFESSOR',
@@ -224,6 +248,7 @@ server.post('/users', async (req, reply) => {
 
     const newUser = await prisma.user.create({
       data: {
+        organizationId: currentUser.organizationId,
         name: body.name,
         email: body.email,
         role: body.role,
@@ -247,7 +272,9 @@ server.get('/users', async (req, reply) => {
   if (!currentUser || currentUser.role !== 'ADMIN') {
     return reply.status(403).send({ code: 'FORBIDDEN' })
   }
-  const users = await prisma.user.findMany()
+  const users = await prisma.user.findMany({
+    where: { organizationId: currentUser.organizationId }
+  })
   return users.map(u => ({
     id: u.id,
     name: u.name,
@@ -283,7 +310,10 @@ server.put('/users/:id', async (req, reply) => {
 
   try {
     const updated = await prisma.user.update({
-      where: { id: params.id },
+      where: {
+        id: params.id,
+        organizationId: currentUser.organizationId
+      },
       data: updateData
     })
     return { id: updated.id }
@@ -301,7 +331,12 @@ server.delete('/users/:id', async (req, reply) => {
   const params = z.object({ id: z.string().uuid() }).parse((req as any).params)
 
   try {
-    await prisma.user.delete({ where: { id: params.id } })
+    await prisma.user.delete({
+      where: {
+        id: params.id,
+        organizationId: currentUser.organizationId
+      }
+    })
     return reply.status(204).send()
   } catch (e: any) {
     if (e.code === 'P2025') return reply.status(404).send({ code: 'NOT_FOUND' })
@@ -314,16 +349,20 @@ server.get('/settings', async (req, reply) => {
   if (!currentUser) return reply.status(401).send({ code: 'UNAUTHORIZED' })
 
   // Ensure settings exist first
-  let settings = await prisma.appSettings.findFirst()
+  let settings = await prisma.appSettings.findUnique({
+    where: { organizationId: currentUser.organizationId }
+  })
   if (!settings) {
     settings = await prisma.appSettings.create({
       data: {
+        organizationId: currentUser.organizationId,
         groupName: 'Grupo de Capoeira'
       }
     })
   }
 
   const graduations = await prisma.graduationLevel.findMany({
+    where: { organizationId: currentUser.organizationId },
     orderBy: { order: 'asc' }
   })
 
@@ -377,15 +416,23 @@ server.put('/settings', async (req, reply) => {
   const body = parsedBody.data
 
   // Update App Settings
-  let settings = await prisma.appSettings.findFirst()
+  let settings = await prisma.appSettings.findUnique({
+    where: { organizationId: currentUser.organizationId }
+  })
   if (!settings) {
     settings = await prisma.appSettings.create({
-      data: { groupName: 'Grupo de Capoeira' }
+      data: {
+        organizationId: currentUser.organizationId,
+        groupName: 'Grupo de Capoeira'
+      }
     })
   }
 
   const updatedSettings = await prisma.appSettings.update({
-    where: { id: settings.id },
+    where: {
+      id: settings.id,
+      organizationId: currentUser.organizationId
+    },
     data: {
       groupName: body.groupName ?? undefined,
       logoUrl: body.logoUrl, // Note: LogoURL is nullable in Prisma schema
@@ -426,15 +473,22 @@ server.put('/settings', async (req, reply) => {
     await prisma.$transaction(async (tx) => {
       // Delete removed
       await tx.graduationLevel.deleteMany({
-        where: { id: { notIn: incomingIds } }
+        where: {
+          id: { notIn: incomingIds },
+          organizationId: currentUser.organizationId
+        }
       })
 
       // Upsert all
       for (const g of graduations) {
         await tx.graduationLevel.upsert({
-          where: { id: g.id },
+          where: {
+            id: g.id,
+            organizationId: currentUser.organizationId
+          },
           create: {
             id: g.id,
+            organizationId: currentUser.organizationId,
             name: g.name,
             description: g.description,
             category: g.category,
@@ -467,7 +521,10 @@ server.put('/settings', async (req, reply) => {
     })
   }
 
-  const finalGraduations = await prisma.graduationLevel.findMany({ orderBy: { order: 'asc' } })
+  const finalGraduations = await prisma.graduationLevel.findMany({
+    where: { organizationId: currentUser.organizationId },
+    orderBy: { order: 'asc' }
+  })
 
   return {
     ...updatedSettings,

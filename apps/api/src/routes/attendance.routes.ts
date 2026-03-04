@@ -27,7 +27,8 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
       const records = await prisma.attendance.findMany({
         where: {
           turmaId: query.turmaId,
-          date: query.date
+          date: query.date,
+          organizationId: user.organizationId
         }
       })
 
@@ -59,7 +60,8 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
         const teacherLink = await prisma.teacherTurma.findFirst({
           where: {
             teacherId: teacher.id,
-            turmaId: body.turmaId
+            turmaId: body.turmaId,
+            organizationId: user.organizationId
           }
         })
 
@@ -75,7 +77,8 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
       const studentTurma = await prisma.studentTurma.findFirst({
         where: {
           studentId: body.studentId,
-          turmaId: body.turmaId
+          turmaId: body.turmaId,
+          organizationId: user.organizationId
         }
       })
 
@@ -91,14 +94,18 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
         where: {
           studentId: body.studentId,
           turmaId: body.turmaId,
-          date: body.date
+          date: body.date,
+          organizationId: user.organizationId
         }
       })
 
       if (existingRecord) {
         // Atualizar registro existente
         const updated = await prisma.attendance.update({
-          where: { id: existingRecord.id },
+          where: {
+            id: existingRecord.id,
+            organizationId: user.organizationId
+          },
           data: {
             status: body.status,
             notes: body.notes
@@ -110,6 +117,7 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
         // Criar novo registro
         const created = await prisma.attendance.create({
           data: {
+            organizationId: user.organizationId,
             studentId: body.studentId,
             turmaId: body.turmaId,
             date: body.date,
@@ -156,7 +164,8 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
 
     try {
       const where: any = {
-        studentId: params.studentId
+        studentId: params.studentId,
+        organizationId: user.organizationId
       }
 
       if (query.startDate && query.endDate) {
@@ -217,7 +226,8 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
         const teacherLink = await prisma.teacherTurma.findFirst({
           where: {
             teacherId: teacher.id,
-            turmaId: params.turmaId
+            turmaId: params.turmaId,
+            organizationId: user.organizationId
           }
         })
 
@@ -231,7 +241,8 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
 
       const students = await prisma.studentTurma.findMany({
         where: {
-          turmaId: params.turmaId
+          turmaId: params.turmaId,
+          organizationId: user.organizationId
         },
         include: {
           student: true
@@ -241,6 +252,7 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
       const attendanceRecords = await prisma.attendance.findMany({
         where: {
           turmaId: params.turmaId,
+          organizationId: user.organizationId,
           date: {
             gte: query.startDate,
             lte: query.endDate

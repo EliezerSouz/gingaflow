@@ -9,6 +9,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     if (!user) throw new Error('UNAUTHORIZED')
 
     const teachers = await prisma.teacher.findMany({
+      where: { organizationId: user.organizationId },
       orderBy: { full_name: 'asc' },
       include: {
         teacherTurmas: {
@@ -66,8 +67,11 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     if (!user) return reply.status(401).send({ code: 'UNAUTHORIZED' })
 
     const params = z.object({ id: z.string().uuid() }).parse((req as any).params)
-    const teacher = await prisma.teacher.findUnique({
-      where: { id: params.id },
+    const teacher = await prisma.teacher.findFirst({
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       include: {
         teacherTurmas: {
           include: {
@@ -147,6 +151,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
 
       const newUser = await prisma.user.create({
         data: {
+          organizationId: user.organizationId,
           name: full_name,
           email,
           role: role || 'PROFESSOR',
@@ -159,6 +164,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
 
     const teacher = await prisma.teacher.create({
       data: {
+        organizationId: user.organizationId,
         full_name,
         nickname,
         graduation,
@@ -169,7 +175,10 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
         notes,
         userId,
         teacherTurmas: turmaIds ? {
-          create: turmaIds.map(id => ({ turmaId: id }))
+          create: turmaIds.map(id => ({
+            turmaId: id,
+            organizationId: user.organizationId
+          }))
         } : undefined
       }
     })
@@ -177,7 +186,10 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     // Sync Turma.teacherId for the selected turmas
     if (turmaIds && turmaIds.length > 0) {
       await prisma.turma.updateMany({
-        where: { id: { in: turmaIds } },
+        where: {
+          id: { in: turmaIds },
+          organizationId: user.organizationId
+        },
         data: { teacherId: teacher.id }
       })
     }
@@ -208,7 +220,12 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     const parsed = Body.parse(req.body)
     const { turmaIds, createAccount, role, password, nickname, graduation, ...rest } = parsed
 
-    const existingTeacher = await prisma.teacher.findUnique({ where: { id: params.id } })
+    const existingTeacher = await prisma.teacher.findFirst({
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      }
+    })
     if (!existingTeacher) return reply.status(404).send({ code: 'NOT_FOUND' })
 
     let userId = existingTeacher.userId
@@ -220,6 +237,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
 
       const newUser = await prisma.user.create({
         data: {
+          organizationId: user.organizationId,
           name: rest.full_name,
           email: rest.email,
           role: 'PROFESSOR',
@@ -231,7 +249,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     } else if (userId && password) {
       // Update password of existing user
       await prisma.user.update({
-        where: { id: userId },
+        where: { id: userId, organizationId: user.organizationId },
         data: {
           password_hash: bcrypt.hashSync(password, 10),
           active: rest.status === 'ATIVO'
@@ -240,7 +258,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     } else if (userId) {
       // Sync active state and email
       await prisma.user.update({
-        where: { id: userId },
+        where: { id: userId, organizationId: user.organizationId },
         data: {
           active: rest.status === 'ATIVO',
           email: rest.email || undefined,
@@ -252,31 +270,48 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     if (turmaIds) {
       // 1. Unset this teacher as 'main' teacher from all turmas where they were assigned
       await prisma.turma.updateMany({
-        where: { teacherId: params.id },
+        where: {
+          teacherId: params.id,
+          organizationId: user.organizationId
+        },
         data: { teacherId: null }
       })
 
       // 2. Delete existing links
-      await prisma.teacherTurma.deleteMany({ where: { teacherId: params.id } })
+      await prisma.teacherTurma.deleteMany({
+        where: {
+          teacherId: params.id,
+          organizationId: user.organizationId
+        }
+      })
 
       // 3. Set this teacher as 'main' teacher for the selected turmas
       if (turmaIds.length > 0) {
         await prisma.turma.updateMany({
-          where: { id: { in: turmaIds } },
+          where: {
+            id: { in: turmaIds },
+            organizationId: user.organizationId
+          },
           data: { teacherId: params.id }
         })
       }
     }
 
     const teacher = await prisma.teacher.update({
-      where: { id: params.id },
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       data: {
         ...rest,
         nickname,
         graduation,
         userId,
         teacherTurmas: turmaIds ? {
-          create: turmaIds.map(id => ({ turmaId: id }))
+          create: turmaIds.map(id => ({
+            turmaId: id,
+            organizationId: user.organizationId
+          }))
         } : undefined
       }
     })
@@ -289,7 +324,12 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     if (!user || user.role !== 'ADMIN') return reply.status(403).send({ code: 'FORBIDDEN' })
 
     const params = z.object({ id: z.string().uuid() }).parse((req as any).params)
-    await prisma.teacher.delete({ where: { id: params.id } })
+    await prisma.teacher.delete({
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      }
+    })
     return reply.status(204).send()
   })
 }

@@ -23,7 +23,7 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
       return reply.status(403).send({ code: 'FORBIDDEN' })
     }
     const query = ListQuery.parse((req as any).query)
-    const where: any = {}
+    const where: any = { organizationId: user.organizationId }
     if (query.status) where.status = query.status
     if (query.student_id) where.studentId = query.student_id
 
@@ -61,8 +61,11 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
     }
 
     const params = z.object({ id: z.string().uuid() }).parse((req as any).params)
-    const payment = await prisma.payment.findUnique({
-      where: { id: params.id },
+    const payment = await prisma.payment.findFirst({
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       include: {
         student: {
           select: {
@@ -100,6 +103,7 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
       const created = await prisma.payment.create({
         data: {
           id: p.id,
+          organizationId: user.organizationId,
           studentId: p.student_id!,
           monthlyFeeCents: toCents(p.monthly_fee),
           dueDay: p.due_day,
@@ -146,7 +150,10 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
 
     try {
       const updated = await prisma.payment.update({
-        where: { id: params.id },
+        where: {
+          id: params.id,
+          organizationId: user.organizationId
+        },
         data: updateData
       })
       return updated
@@ -169,7 +176,10 @@ export async function registerPaymentRoutes(app: FastifyInstance) {
 
     try {
       await prisma.payment.delete({
-        where: { id: params.id }
+        where: {
+          id: params.id,
+          organizationId: user.organizationId
+        }
       })
       return reply.status(204).send()
     } catch (e: any) {

@@ -2,35 +2,30 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// -------------------------------------------------------------------------
-// PASSO 1: Gere uma URL pública (Ex: via ngrok: 'ngrok http 5175')
-// PASSO 2: Cole a URL gerada abaixo
-// -------------------------------------------------------------------------
-// export const EXTERNAL_API_URL = 'http://192.168.1.6:5175'; // Comentado para usar emulador
-export const EXTERNAL_API_URL = 'http://192.168.1.10:5175'; // Vazio = usa configuração automática
-console.log('🔗 Mobile API URL:', EXTERNAL_API_URL || 'Using default fallback');
-
+// Use the environment variable from .env or apply automatic fallback
 const getApiUrl = () => {
-    // Se houver uma URL externa definida e não for o valor padrão, use-a.
-    // Isso permite testar no celular via 4G ou WiFi sem reconstruir o app toda hora.
-    if (EXTERNAL_API_URL && !EXTERNAL_API_URL.includes('sua-url')) {
-        return EXTERNAL_API_URL;
+    // 1. Try public env variable
+    if (process.env.EXPO_PUBLIC_API_URL) {
+        return process.env.EXPO_PUBLIC_API_URL;
     }
 
-    if (!__DEV__) {
-        return EXTERNAL_API_URL;
+    // 2. Fallback to production/custom URL if defined
+    // 3. Auto-detect local development
+    if (__DEV__) {
+        // Enulador Android
+        if (Platform.OS === 'android') {
+            return 'http://10.0.2.2:5175';
+        }
+        // iOS/Web
+        return 'http://localhost:5175';
     }
 
-    // Se estiver rodando no emulador Android
-    if (Platform.OS === 'android') {
-        return 'http://10.0.2.2:5175';
-    }
-
-    // iOS Simulator ou web
-    return 'http://localhost:5175';
+    // Default production URL if none of the above
+    return 'http://gingaflow-api.local';
 };
 
 export const API_URL = getApiUrl();
+console.log('🔗 Mobile API URL:', API_URL);
 
 export const api = axios.create({
     baseURL: API_URL,

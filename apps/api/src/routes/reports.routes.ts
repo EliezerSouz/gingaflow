@@ -17,6 +17,7 @@ export async function registerReportsRoutes(app: FastifyInstance) {
         // Receita por mês (PAGO)
         const riskPayments = await prisma.payment.findMany({
             where: {
+                organizationId: user.organizationId,
                 status: 'PAGO',
                 paidAt: {
                     gte: startOfYear,
@@ -39,18 +40,27 @@ export async function registerReportsRoutes(app: FastifyInstance) {
 
         // KPI: Inadimplência atual (Pagamentos ATRASADO)
         const overdueCount = await prisma.payment.count({
-            where: { status: 'ATRASADO' }
+            where: {
+                status: 'ATRASADO',
+                organizationId: user.organizationId
+            }
         })
 
         const overdueValueAggr = await prisma.payment.aggregate({
-            where: { status: 'ATRASADO' },
+            where: {
+                status: 'ATRASADO',
+                organizationId: user.organizationId
+            },
             _sum: { monthlyFeeCents: true }
         })
 
         // KPI: Previsão de receita mês atual (status != PAGO mas período = mês atual)
         const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM
         const forecastAggr = await prisma.payment.aggregate({
-            where: { period: currentPeriod },
+            where: {
+                period: currentPeriod,
+                organizationId: user.organizationId
+            },
             _sum: { monthlyFeeCents: true }
         })
 
@@ -75,6 +85,7 @@ export async function registerReportsRoutes(app: FastifyInstance) {
 
         // Alunos por Status
         const statusGroups = await prisma.student.groupBy({
+            where: { organizationId: user.organizationId },
             by: ['status'],
             _count: { id: true }
         })
@@ -82,7 +93,10 @@ export async function registerReportsRoutes(app: FastifyInstance) {
         // Alunos por Graduação (Agrupamento em memória)
         // Buscamos todos os alunos e suas graduações para determinar a atual
         const students = await prisma.student.findMany({
-            where: { status: 'ATIVO' },
+            where: {
+                status: 'ATIVO',
+                organizationId: user.organizationId
+            },
             include: {
                 graduations: {
                     orderBy: { date: 'desc' },
@@ -92,7 +106,9 @@ export async function registerReportsRoutes(app: FastifyInstance) {
         })
 
         // Resolver nomes de graduação via GraduationLevel (padrão do projeto)
-        const graduationLevels = await prisma.graduationLevel.findMany()
+        const graduationLevels = await prisma.graduationLevel.findMany({
+            where: { organizationId: user.organizationId }
+        })
         const graduationsMap: Record<string, any> = graduationLevels.reduce((acc: any, g: any) => {
             acc[g.id] = g
             return acc

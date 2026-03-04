@@ -63,6 +63,7 @@ export type Payment = z.infer<typeof PaymentSchema>
 
 export const UserSchema = z.object({
   id: UUID.optional(),
+  organizationId: UUID.optional(),
   name: z.string().min(1).max(160),
   email: z.string().email(),
   role: z.enum(['ADMIN', 'PROFESSOR']),

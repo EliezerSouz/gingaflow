@@ -36,7 +36,7 @@ export async function registerStudentRoutes(app: FastifyInstance) {
     }
 
     // Build filter
-    const where: any = {}
+    const where: any = { organizationId: user.organizationId }
 
     // RBAC: If user is PROFESSOR, only show their students
     if (user.role === 'PROFESSOR') {
@@ -146,8 +146,11 @@ export async function registerStudentRoutes(app: FastifyInstance) {
       return reply.status(401).send({ code: 'UNAUTHORIZED' })
     }
     const params = z.object({ id: z.string().uuid() }).parse((req as any).params)
-    const student = await prisma.student.findUnique({
-      where: { id: params.id },
+    const student = await prisma.student.findFirst({
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       include: {
         activities: {
           include: { activityType: true }
@@ -202,11 +205,18 @@ export async function registerStudentRoutes(app: FastifyInstance) {
       const created = await prisma.student.create({
         data: {
           ...rest as any,
+          organizationId: user.organizationId,
           activities: activityTypeIds ? {
-            create: activityTypeIds.map(id => ({ activityTypeId: id }))
+            create: activityTypeIds.map(id => ({
+              activityTypeId: id,
+              organizationId: user.organizationId
+            }))
           } : undefined,
           studentTurmas: turmaIds ? {
-            create: turmaIds.map(id => ({ turmaId: id }))
+            create: turmaIds.map(id => ({
+              turmaId: id,
+              organizationId: user.organizationId
+            }))
           } : undefined
         }
       })
@@ -219,6 +229,7 @@ export async function registerStudentRoutes(app: FastifyInstance) {
         if (gradLevel) {
           await prisma.graduation.create({
             data: {
+              organizationId: user.organizationId,
               studentId: created.id,
               newGraduationId: gradLevel.id,
               date: new Date(dateMatch[1].split('/').reverse().join('-')).toISOString().split('T')[0],
@@ -226,7 +237,7 @@ export async function registerStudentRoutes(app: FastifyInstance) {
             }
           })
           await prisma.student.update({
-            where: { id: created.id },
+            where: { id: created.id, organizationId: user.organizationId },
             data: { currentGraduationId: gradLevel.id }
           })
         }
@@ -263,24 +274,39 @@ export async function registerStudentRoutes(app: FastifyInstance) {
 
     if (!isProfessor && activityTypeIds) {
       await prisma.studentActivity.deleteMany({
-        where: { studentId: params.id }
+        where: {
+          studentId: params.id,
+          organizationId: user.organizationId
+        }
       })
     }
     if (!isProfessor && turmaIds) {
       await prisma.studentTurma.deleteMany({
-        where: { studentId: params.id }
+        where: {
+          studentId: params.id,
+          organizationId: user.organizationId
+        }
       })
     }
 
     const updated = await prisma.student.update({
-      where: { id: params.id },
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       data: {
         ...rest as any,
         activities: (!isProfessor && activityTypeIds) ? {
-          create: activityTypeIds.map(id => ({ activityTypeId: id }))
+          create: activityTypeIds.map(id => ({
+            activityTypeId: id,
+            organizationId: user.organizationId
+          }))
         } : undefined,
         studentTurmas: (!isProfessor && turmaIds) ? {
-          create: turmaIds.map(id => ({ turmaId: id }))
+          create: turmaIds.map(id => ({
+            turmaId: id,
+            organizationId: user.organizationId
+          }))
         } : undefined
       }
     })
@@ -293,6 +319,7 @@ export async function registerStudentRoutes(app: FastifyInstance) {
       if (gradLevel && updated.currentGraduationId !== gradLevel.id) {
         await prisma.graduation.create({
           data: {
+            organizationId: user.organizationId,
             studentId: params.id,
             newGraduationId: gradLevel.id,
             date: new Date(dateMatch[1].split('/').reverse().join('-')).toISOString().split('T')[0],
@@ -300,7 +327,10 @@ export async function registerStudentRoutes(app: FastifyInstance) {
           }
         })
         await prisma.student.update({
-          where: { id: params.id },
+          where: {
+            id: params.id,
+            organizationId: user.organizationId
+          },
           data: { currentGraduationId: gradLevel.id }
         })
       }
@@ -315,7 +345,12 @@ export async function registerStudentRoutes(app: FastifyInstance) {
       return reply.status(403).send({ code: 'FORBIDDEN' })
     }
     const params = z.object({ id: z.string().uuid() }).parse((req as any).params)
-    await prisma.student.delete({ where: { id: params.id } })
+    await prisma.student.delete({
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      }
+    })
     return reply.status(204).send()
   })
 }

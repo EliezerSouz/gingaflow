@@ -28,11 +28,16 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     if (!user) {
       throw new Error('UNAUTHORIZED')
     }
-    const where: any = {}
+    const where: any = { organizationId: user.organizationId }
     let teacherId: string | undefined
 
     if (user.role === 'PROFESSOR') {
-      const teacher = await prisma.teacher.findUnique({ where: { userId: user.id } })
+      const teacher = await prisma.teacher.findFirst({
+        where: {
+          userId: user.id,
+          organizationId: user.organizationId
+        }
+      })
       if (teacher) {
         teacherId = teacher.id
         where.turmas = {
@@ -76,6 +81,7 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     }
     const created = await prisma.unit.create({
       data: {
+        organizationId: user.organizationId,
         name: parsed.data.name,
         address: parsed.data.address ?? null,
         color: parsed.data.color ?? null,
@@ -98,7 +104,10 @@ export async function registerUnitRoutes(app: FastifyInstance) {
       return reply.status(422).send({ code: 'VALIDATION_ERROR', details: parsed.error.issues })
     }
     const updated = await prisma.unit.update({
-      where: { id: params.id },
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       data: {
         name: parsed.data.name,
         address: parsed.data.address ?? null,
@@ -117,8 +126,11 @@ export async function registerUnitRoutes(app: FastifyInstance) {
       return reply.status(401).send({ code: 'UNAUTHORIZED' })
     }
     const params = z.object({ id: z.string().uuid() }).parse((req as any).params)
-    const unit = await prisma.unit.findUnique({
-      where: { id: params.id },
+    const unit = await prisma.unit.findFirst({
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       include: {
         turmas: {
           orderBy: { name: 'asc' },
@@ -139,7 +151,10 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     }
     const params = z.object({ unit_id: z.string().uuid() }).parse((req as any).params)
     const items = await prisma.turma.findMany({
-      where: { unitId: params.unit_id },
+      where: {
+        unitId: params.unit_id,
+        organizationId: user.organizationId
+      },
       orderBy: { name: 'asc' },
       include: { teacher: true }
     })
@@ -158,6 +173,7 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     const data = parsed.data
     const created = await prisma.turma.create({
       data: {
+        organizationId: user.organizationId,
         name: data.name,
         unitId: data.unitId,
         activityTypeId: data.activityTypeId ?? null,
@@ -172,6 +188,7 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     if (data.teacherId) {
       await prisma.teacherTurma.create({
         data: {
+          organizationId: user.organizationId,
           teacherId: data.teacherId,
           turmaId: created.id
         }
@@ -193,7 +210,10 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     }
     const data = parsed.data
     const updated = await prisma.turma.update({
-      where: { id: params.id },
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       data: {
         name: data.name,
         unitId: data.unitId,
@@ -209,14 +229,24 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     // Sync TeacherTurma link
     if (data.teacherId !== undefined) {
       if (data.teacherId === null) {
-        // Option 1: User set teacher to none. We could remove all links or just keep it simple.
-        // For now, let's remove existing links for this turma.
-        await prisma.teacherTurma.deleteMany({ where: { turmaId: params.id } })
+        // Option 1: User set teacher to none. We could remove all links.
+        await prisma.teacherTurma.deleteMany({
+          where: {
+            turmaId: params.id,
+            organizationId: user.organizationId
+          }
+        })
       } else {
         // Option 2: Main teacher changed. Clear old ones and set new one.
-        await prisma.teacherTurma.deleteMany({ where: { turmaId: params.id } })
+        await prisma.teacherTurma.deleteMany({
+          where: {
+            turmaId: params.id,
+            organizationId: user.organizationId
+          }
+        })
         await prisma.teacherTurma.create({
           data: {
+            organizationId: user.organizationId,
             teacherId: data.teacherId,
             turmaId: params.id
           }
@@ -233,8 +263,11 @@ export async function registerUnitRoutes(app: FastifyInstance) {
       return reply.status(401).send({ code: 'UNAUTHORIZED' })
     }
     const params = z.object({ id: z.string().uuid() }).parse((req as any).params)
-    const turma = await prisma.turma.findUnique({
-      where: { id: params.id },
+    const turma = await prisma.turma.findFirst({
+      where: {
+        id: params.id,
+        organizationId: user.organizationId
+      },
       include: {
         unit: true,
         teacher: true,
