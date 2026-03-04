@@ -15,7 +15,17 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
         teacherTurmas: {
           include: {
             turma: {
-              include: { unit: true }
+              include: {
+                unit: true,
+                schedules: { include: { teacher: true } }
+              }
+            }
+          }
+        },
+        schedules: {
+          include: {
+            turma: {
+              include: { unit: true, teacher: true }
             }
           }
         },
@@ -25,22 +35,41 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
 
     const data = teachers.map(t => {
       const unitsMap: Record<string, any> = {}
+
+      // From legacy/access links
       t.teacherTurmas.forEach(link => {
         const uId = link.turma.unit.id
         if (!unitsMap[uId]) {
-          unitsMap[uId] = {
-            id: link.turma.unit.id,
-            name: link.turma.unit.name,
-            color: link.turma.unit.color,
-            turmas: []
-          }
+          unitsMap[uId] = { id: link.turma.unit.id, name: link.turma.unit.name, color: link.turma.unit.color, turmas: [] }
         }
-        unitsMap[uId].turmas.push({
-          id: link.turma.id,
-          name: link.turma.name,
-          schedule: link.turma.schedule,
-          status: link.turma.status
-        })
+        if (!unitsMap[uId].turmas.find((tt: any) => tt.id === link.turma.id)) {
+          unitsMap[uId].turmas.push({
+            id: link.turma.id,
+            name: link.turma.name,
+            schedule: link.turma.schedule,
+            status: link.turma.status,
+            schedules: (link.turma as any).schedules
+          })
+        }
+      });
+
+      // From specific schedule assignments
+      (t as any).schedules?.forEach((s: any) => {
+        const uId = s.turma.unit.id
+        if (!unitsMap[uId]) {
+          unitsMap[uId] = { id: s.turma.unit.id, name: s.turma.unit.name, color: s.turma.unit.color, turmas: [] }
+        }
+        let turma = unitsMap[uId].turmas.find((tt: any) => tt.id === s.turma.id)
+        if (!turma) {
+          turma = {
+            id: s.turma.id,
+            name: s.turma.name,
+            schedule: s.turma.schedule,
+            status: s.turma.status,
+            schedules: []
+          }
+          unitsMap[uId].turmas.push(turma)
+        }
       })
 
       return {
@@ -76,7 +105,17 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
         teacherTurmas: {
           include: {
             turma: {
-              include: { unit: true }
+              include: {
+                unit: true,
+                schedules: { include: { teacher: true } }
+              }
+            }
+          }
+        },
+        schedules: {
+          include: {
+            turma: {
+              include: { unit: true, teacher: true }
             }
           }
         },
@@ -90,19 +129,35 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     teacher.teacherTurmas.forEach(link => {
       const uId = link.turma.unit.id
       if (!unitsMap[uId]) {
-        unitsMap[uId] = {
-          id: link.turma.unit.id,
-          name: link.turma.unit.name,
-          color: link.turma.unit.color,
-          turmas: []
-        }
+        unitsMap[uId] = { id: link.turma.unit.id, name: link.turma.unit.name, color: link.turma.unit.color, turmas: [] }
       }
-      unitsMap[uId].turmas.push({
-        id: link.turma.id,
-        name: link.turma.name,
-        schedule: link.turma.schedule,
-        status: link.turma.status
-      })
+      if (!unitsMap[uId].turmas.find((tt: any) => tt.id === link.turma.id)) {
+        unitsMap[uId].turmas.push({
+          id: link.turma.id,
+          name: link.turma.name,
+          schedule: link.turma.schedule,
+          status: link.turma.status,
+          schedules: (link.turma as any).schedules
+        })
+      }
+    });
+
+    (teacher as any).schedules?.forEach((s: any) => {
+      const uId = s.turma.unit.id
+      if (!unitsMap[uId]) {
+        unitsMap[uId] = { id: s.turma.unit.id, name: s.turma.unit.name, color: s.turma.unit.color, turmas: [] }
+      }
+      let turma = unitsMap[uId].turmas.find((tt: any) => tt.id === s.turma.id)
+      if (!turma) {
+        turma = {
+          id: s.turma.id,
+          name: s.turma.name,
+          schedule: s.turma.schedule,
+          status: s.turma.status,
+          schedules: []
+        }
+        unitsMap[uId].turmas.push(turma)
+      }
     })
 
     return {
@@ -134,6 +189,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
       status: z.enum(['ATIVO', 'INATIVO']),
       graduation: z.string().nullable().optional(),
       turmaIds: z.array(z.string().uuid()).optional(),
+      scheduleIds: z.array(z.string().uuid()).optional(),
       notes: z.string().nullable().optional(),
       createAccount: z.boolean().optional(),
       role: z.enum(['ADMIN', 'PROFESSOR']).optional(),
@@ -141,7 +197,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     })
 
     const parsed = Body.parse(req.body)
-    const { full_name, nickname, graduation, cpf, email, phone, status, turmaIds, notes, createAccount, role, password } = parsed
+    const { full_name, nickname, graduation, cpf, email, phone, status, turmaIds, scheduleIds, notes, createAccount, role, password } = parsed
 
     let userId: string | undefined
 
@@ -186,10 +242,15 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     // Sync Turma.teacherId for the selected turmas
     if (turmaIds && turmaIds.length > 0) {
       await prisma.turma.updateMany({
-        where: {
-          id: { in: turmaIds },
-          organizationId: user.organizationId
-        },
+        where: { id: { in: turmaIds }, organizationId: user.organizationId },
+        data: { teacherId: teacher.id }
+      })
+    }
+
+    // Sync TurmaSchedule.teacherId for specific schedules
+    if (scheduleIds && scheduleIds.length > 0) {
+      await prisma.turmaSchedule.updateMany({
+        where: { id: { in: scheduleIds }, organizationId: user.organizationId },
         data: { teacherId: teacher.id }
       })
     }
@@ -211,6 +272,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
       status: z.enum(['ATIVO', 'INATIVO']),
       graduation: z.string().nullable().optional(),
       turmaIds: z.array(z.string().uuid()).optional(),
+      scheduleIds: z.array(z.string().uuid()).optional(),
       notes: z.string().nullable().optional(),
       createAccount: z.boolean().optional(),
       role: z.enum(['ADMIN', 'PROFESSOR']).optional(),
@@ -218,7 +280,7 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
     })
 
     const parsed = Body.parse(req.body)
-    const { turmaIds, createAccount, role, password, nickname, graduation, ...rest } = parsed
+    const { turmaIds, scheduleIds, createAccount, role, password, nickname, graduation, ...rest } = parsed
 
     const existingTeacher = await prisma.teacher.findFirst({
       where: {
@@ -288,10 +350,23 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
       // 3. Set this teacher as 'main' teacher for the selected turmas
       if (turmaIds.length > 0) {
         await prisma.turma.updateMany({
-          where: {
-            id: { in: turmaIds },
-            organizationId: user.organizationId
-          },
+          where: { id: { in: turmaIds }, organizationId: user.organizationId },
+          data: { teacherId: params.id }
+        })
+      }
+    }
+
+    if (scheduleIds) {
+      // 1. Unset this teacher from all schedules where they were assigned
+      await prisma.turmaSchedule.updateMany({
+        where: { teacherId: params.id, organizationId: user.organizationId },
+        data: { teacherId: null }
+      })
+
+      // 2. Set this teacher for the selected schedules
+      if (scheduleIds.length > 0) {
+        await prisma.turmaSchedule.updateMany({
+          where: { id: { in: scheduleIds }, organizationId: user.organizationId },
           data: { teacherId: params.id }
         })
       }

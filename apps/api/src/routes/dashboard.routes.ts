@@ -68,10 +68,53 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                 const todayShort = weekDays[dayOfWeek]
                 const todayLong = weekDaysLong[dayOfWeek]
 
+                // 2. Níveis de Graduação para Mapeamento de Cores
+                const graduationLevels = await prisma.graduationLevel.findMany({
+                    where: { organizationId: orgId }
+                });
+                const gradsMap = graduationLevels.reduce((acc: any, g: any) => {
+                    acc[g.id] = {
+                        color: g.color,
+                        colorLeft: g.colorLeft,
+                        colorRight: g.colorRight,
+                        pontaLeft: g.pontaLeft,
+                        pontaRight: g.pontaRight
+                    };
+                    return acc;
+                }, {});
+
                 const turmasQuery = await prisma.turma.findMany({
                     where: { organizationId: orgId, status: 'ATIVA', ...unitFilter },
                     include: {
                         teacher: true,
+                        activityType: true,
+                        schedules: {
+                            where: { dayOfWeek: todayShort },
+                            include: {
+                                teacher: true,
+                                students: {
+                                    select: {
+                                        id: true,
+                                        full_name: true,
+                                        nickname: true,
+                                        currentGraduationId: true
+                                    }
+                                },
+                                _count: { select: { students: true } }
+                            }
+                        },
+                        studentLinks: {
+                            include: {
+                                student: {
+                                    select: {
+                                        id: true,
+                                        full_name: true,
+                                        nickname: true,
+                                        currentGraduationId: true
+                                    }
+                                }
+                            }
+                        },
                         _count: { select: { studentLinks: true } }
                     }
                 })
@@ -83,31 +126,95 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                 })
 
                 turmasQuery.forEach(t => {
-                    if (!t.schedule) return
-                    const parts = t.schedule.split(',').map(p => p.trim().toUpperCase())
-                    parts.forEach(part => {
-                        if (part.includes(todayShort) || part.includes(todayLong)) {
-                            const timeMatch = part.match(/\d{2}:\d{1,2}/)
-                            const time = timeMatch ? timeMatch[0] : '--:--'
-                            const sessionAttendances = allAttendancesToday.filter(
-                                a => a.turmaId === t.id && (a.time === time || (!a.time && time === '--:--'))
-                            ).length
-                            const count = sessionAttendances
-                            const enrolled = t._count.studentLinks
-                            const status = (enrolled > 0 && count >= enrolled) ? 'Aula Cheia' : 'Vagas Disp.'
+                    // Usar novos horários
+                    t.schedules.forEach(sched => {
+                        const time = sched.startTime
+                        const sessionAttendances = allAttendancesToday.filter(
+                            a => a.turmaId === t.id && a.time === time
+                        ).length
 
-                            classesToday.push({
-                                id: `${t.id}-${time}`,
-                                turmaId: t.id,
-                                name: t.name,
-                                time,
-                                teacher: t.teacher?.nickname || t.teacher?.full_name || 'Sem Prof.',
-                                count,
-                                enrolledCount: enrolled,
-                                status
-                            })
+                        const count = sessionAttendances
+                        const enrolled = sched._count.students
+                        const capacityThreshold = (t as any).capacity || 0
+
+                        let status = 'Vagas Disp.'
+                        if (capacityThreshold > 0 && enrolled >= capacityThreshold) {
+                            status = 'Aula Cheia'
                         }
+
+                        const teacherData = sched.teacher || t.teacher;
+                        const isCapoeira = t.activityType?.name?.toLowerCase().includes('capoeira');
+                        const teacherName = (isCapoeira && teacherData?.nickname)
+                            ? teacherData.nickname
+                            : (teacherData?.full_name || 'Sem Prof.');
+
+                        classesToday.push({
+                            id: `${t.id}-${time}`,
+                            turmaId: t.id,
+                            name: t.name,
+                            time,
+                            teacher: teacherName,
+                            count,
+                            enrolledCount: enrolled,
+                            status,
+                            students: sched.students.map((s: any) => {
+                                const grad = s.currentGraduationId ? gradsMap[s.currentGraduationId] : null;
+                                return {
+                                    id: s.id,
+                                    name: (isCapoeira && s.nickname) ? s.nickname : s.full_name,
+                                    cord: isCapoeira ? (grad || { color: '#D1D5DB' }) : null
+                                };
+                            })
+                        })
                     })
+
+                    // Fallback para turmas legadas sem registro na tabela de horários (caso a migração tenha falhado ou algo assim)
+                    if (t.schedules.length === 0 && t.schedule) {
+                        const parts = t.schedule.split(',').map(p => p.trim().toUpperCase())
+                        parts.forEach(part => {
+                            if (part.includes(todayShort) || part.includes(todayLong)) {
+                                const timeMatch = part.match(/\d{2}:\d{1,2}/)
+                                const time = timeMatch ? timeMatch[0] : '--:--'
+                                const sessionAttendances = allAttendancesToday.filter(
+                                    a => a.turmaId === t.id && (a.time === time || (!a.time && time === '--:--'))
+                                ).length
+                                const count = sessionAttendances
+                                const enrolled = t._count.studentLinks
+                                const capacityThreshold = (t as any).capacity || 0
+
+                                let status = 'Vagas Disp.'
+                                if (capacityThreshold > 0 && enrolled >= capacityThreshold) {
+                                    status = 'Aula Cheia'
+                                }
+
+                                const teacherData = t.teacher;
+                                const isCapoeira = (t as any).activityType?.name?.toLowerCase().includes('capoeira');
+                                const teacherName = (isCapoeira && teacherData?.nickname)
+                                    ? teacherData.nickname
+                                    : (teacherData?.full_name || 'Sem Prof.');
+
+                                classesToday.push({
+                                    id: `${t.id}-${time}`,
+                                    turmaId: t.id,
+                                    name: t.name,
+                                    time,
+                                    teacher: teacherName,
+                                    count,
+                                    enrolledCount: enrolled,
+                                    status,
+                                    students: t.studentLinks.map((link: any) => {
+                                        const s = link.student;
+                                        const grad = s.currentGraduationId ? gradsMap[s.currentGraduationId] : null;
+                                        return {
+                                            id: s.id,
+                                            name: (isCapoeira && s.nickname) ? s.nickname : s.full_name,
+                                            cord: isCapoeira ? (grad || { color: '#D1D5DB' }) : null
+                                        };
+                                    })
+                                })
+                            }
+                        })
+                    }
                 })
 
                 classesToday.sort((a, b) => a.time.localeCompare(b.time))

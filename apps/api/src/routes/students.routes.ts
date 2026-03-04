@@ -97,6 +97,7 @@ export async function registerStudentRoutes(app: FastifyInstance) {
               }
             }
           },
+          schedules: true, // Added schedules include
           graduations: {
             take: 1,
             orderBy: { date: 'desc' }
@@ -158,12 +159,17 @@ export async function registerStudentRoutes(app: FastifyInstance) {
         studentTurmas: {
           include: {
             turma: {
-              include: { teacher: true, unit: true }
+              include: {
+                teacher: true,
+                unit: true,
+                schedules: true
+              }
             }
           }
         },
         payments: { take: 5, orderBy: { period: 'desc' } },
-        graduations: { take: 10, orderBy: { date: 'desc' } }
+        graduations: { take: 10, orderBy: { date: 'desc' } },
+        schedules: true
       }
     })
     if (!student) return reply.status(404).send({ code: 'NOT_FOUND', message: 'Aluno não encontrado' })
@@ -201,7 +207,7 @@ export async function registerStudentRoutes(app: FastifyInstance) {
       return reply.status(422).send({ code: 'VALIDATION_ERROR', details: parsed.error.issues })
     }
     try {
-      const { activityTypeIds, turmaIds, activityTypeId, id, ...rest } = parsed.data
+      const { activityTypeIds, turmaIds, scheduleIds, enrollments, activityTypeId, id, ...rest } = parsed.data
       const created = await prisma.student.create({
         data: {
           ...rest as any,
@@ -212,11 +218,23 @@ export async function registerStudentRoutes(app: FastifyInstance) {
               organizationId: user.organizationId
             }))
           } : undefined,
-          studentTurmas: turmaIds ? {
+          studentTurmas: enrollments ? {
+            create: enrollments.map(e => ({
+              turmaId: e.turmaId,
+              organizationId: user.organizationId,
+              status: e.status || 'ACTIVE',
+              startDate: e.startDate,
+              endDate: e.endDate,
+              customMonthlyFeeCents: e.customMonthlyFeeCents
+            }))
+          } : (turmaIds ? {
             create: turmaIds.map(id => ({
               turmaId: id,
               organizationId: user.organizationId
             }))
+          } : undefined),
+          schedules: scheduleIds ? {
+            connect: scheduleIds.map(id => ({ id }))
           } : undefined
         }
       })
@@ -263,52 +281,103 @@ export async function registerStudentRoutes(app: FastifyInstance) {
       return reply.status(422).send({ code: 'VALIDATION_ERROR', details: parsed.error.issues })
     }
 
-    const { activityTypeIds, turmaIds, activityTypeId, id, ...rest } = parsed.data
-    const isProfessor = (req as any).currentUser.role === 'PROFESSOR'
+    const { activityTypeIds, turmaIds, scheduleIds, enrollments, activityTypeId, id, ...rest } = parsed.data
+    const isProfessor = user.role === 'PROFESSOR'
 
-    // Only update relationships if ADMIN or creating a new student (handled by POST)
-    // For PROFESSOR, they should only be able to update their own classes,
-    // but the current UI for PROFESSOR filters available classes based on their unit.
-    // So if Professor A saves a student also in Professor B's unit, B's turmas are lost.
-    // As suggested, we'll only allow PROFESSOR to edit personal/financial data and NOT the classes themselves as they are "shared" entities.
-
-    if (!isProfessor && activityTypeIds) {
-      await prisma.studentActivity.deleteMany({
-        where: {
-          studentId: params.id,
-          organizationId: user.organizationId
+    const updated = await prisma.$transaction(async (tx) => {
+      // 1. Atualizar dados básicos
+      const student = await tx.student.update({
+        where: { id: params.id, organizationId: user.organizationId },
+        data: {
+          ...rest as any,
+          // Sincronizar Horários (Set é seguro, ele gerencia a tabela de junção sem deletar registros de horário)
+          schedules: (!isProfessor && scheduleIds) ? {
+            set: scheduleIds.map(id => ({ id }))
+          } : undefined
         }
       })
-    }
-    if (!isProfessor && turmaIds) {
-      await prisma.studentTurma.deleteMany({
-        where: {
-          studentId: params.id,
-          organizationId: user.organizationId
-        }
-      })
-    }
 
-    const updated = await prisma.student.update({
-      where: {
-        id: params.id,
-        organizationId: user.organizationId
-      },
-      data: {
-        ...rest as any,
-        activities: (!isProfessor && activityTypeIds) ? {
-          create: activityTypeIds.map(id => ({
-            activityTypeId: id,
-            organizationId: user.organizationId
-          }))
-        } : undefined,
-        studentTurmas: (!isProfessor && turmaIds) ? {
-          create: turmaIds.map(id => ({
-            turmaId: id,
-            organizationId: user.organizationId
-          }))
-        } : undefined
+      // 2. Sincronizar Atividades (Se não for professor)
+      if (!isProfessor && activityTypeIds) {
+        const currentActivities = await tx.studentActivity.findMany({
+          where: { studentId: params.id }
+        })
+        const toDelete = currentActivities.filter(a => !activityTypeIds.includes(a.activityTypeId))
+        if (toDelete.length > 0) {
+          await tx.studentActivity.deleteMany({
+            where: {
+              studentId: params.id,
+              activityTypeId: { in: toDelete.map(a => a.activityTypeId) }
+            }
+          })
+        }
+        for (const actId of activityTypeIds) {
+          await tx.studentActivity.upsert({
+            where: { studentId_activityTypeId: { studentId: params.id, activityTypeId: actId } },
+            create: { studentId: params.id, activityTypeId: actId, organizationId: user.organizationId },
+            update: {}
+          })
+        }
       }
+
+      // 3. Sincronizar Turmas (Matrículas)
+      if (!isProfessor && (turmaIds || enrollments)) {
+        const currentEnrollments = await tx.studentTurma.findMany({
+          where: { studentId: params.id }
+        })
+
+        const nextTurmaIds = enrollments ? enrollments.map(e => e.turmaId) : (turmaIds || [])
+
+        // Deletar matrículas que foram removidas
+        const toDelete = currentEnrollments.filter(e => !nextTurmaIds.includes(e.turmaId))
+        if (toDelete.length > 0) {
+          await tx.studentTurma.deleteMany({
+            where: {
+              studentId: params.id,
+              turmaId: { in: toDelete.map(e => e.turmaId) }
+            }
+          })
+        }
+
+        // Upsert para preservar dados existentes (ex: customMonthlyFeeCents)
+        if (enrollments) {
+          for (const e of enrollments) {
+            await tx.studentTurma.upsert({
+              where: { studentId_turmaId: { studentId: params.id, turmaId: e.turmaId } },
+              create: {
+                studentId: params.id,
+                turmaId: e.turmaId,
+                organizationId: user.organizationId,
+                status: e.status || 'ACTIVE',
+                startDate: e.startDate,
+                endDate: e.endDate,
+                customMonthlyFeeCents: e.customMonthlyFeeCents
+              },
+              update: {
+                status: e.status || 'ACTIVE',
+                startDate: e.startDate,
+                endDate: e.endDate,
+                customMonthlyFeeCents: e.customMonthlyFeeCents
+              }
+            })
+          }
+        } else if (turmaIds) {
+          for (const tId of turmaIds) {
+            await tx.studentTurma.upsert({
+              where: { studentId_turmaId: { studentId: params.id, turmaId: tId } },
+              create: {
+                studentId: params.id,
+                turmaId: tId,
+                organizationId: user.organizationId,
+                status: 'ACTIVE'
+              },
+              update: {} // Não altera nada se já existir, preservando dados extras
+            })
+          }
+        }
+      }
+
+      return student
     })
 
     // Update graduation if changed in notes (Form UI)

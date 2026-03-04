@@ -5,6 +5,14 @@ export const DateISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 export const TimestampISO = z.string().regex(/^\d{4}-\d{2}-\d{2}T/)
 export const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
 
+export const EnrollmentSchema = z.object({
+  turmaId: UUID,
+  status: z.enum(['ACTIVE', 'INACTIVE', 'DROPPED']).optional(),
+  startDate: DateISO.optional().nullable(),
+  endDate: DateISO.optional().nullable(),
+  customMonthlyFeeCents: z.number().int().optional().nullable()
+})
+
 export const StudentSchema = z.object({
   id: UUID.optional(),
   full_name: z.string().min(3).max(160),
@@ -18,7 +26,9 @@ export const StudentSchema = z.object({
   notes: z.string().max(1000).optional().nullable(),
   activityTypeId: UUID.optional(),
   activityTypeIds: z.array(UUID).optional(),
-  turmaIds: z.array(UUID).optional()
+  turmaIds: z.array(UUID).optional(),
+  scheduleIds: z.array(UUID).optional(),
+  enrollments: z.array(EnrollmentSchema).optional()
 })
 
 export const AddressSchema = z.object({

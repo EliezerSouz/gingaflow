@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
 import { Button } from '../components/ui/Button';
 
@@ -45,14 +46,15 @@ export default function TurmaCreateScreen() {
         unitId: preSelectedUnitId || '',
         activityTypeId: '',
         teacherId: '',
-        schedule: '',
+        capacity: '20',
         defaultMonthlyFeeCents: '',
         status: 'ATIVA' as 'ATIVA' | 'INATIVA'
     });
 
-    // Estado para construir o horário
-    const [selectedDays, setSelectedDays] = useState<string[]>([]);
-    const [time, setTime] = useState('18:00');
+    // Estado para os horários
+    const [schedules, setSchedules] = useState<Array<{ dayOfWeek: string; startTime: string; teacherId?: string }>>([
+        { dayOfWeek: 'SEG', startTime: '18:00' }
+    ]);
 
     useEffect(() => {
         loadUnits();
@@ -101,18 +103,25 @@ export default function TurmaCreateScreen() {
                 unitId: turma.unitId || preSelectedUnitId || '',
                 activityTypeId: turma.activityTypeId || '',
                 teacherId: turma.teacherId || '',
-                schedule: turma.schedule || '',
+                capacity: turma.capacity ? turma.capacity.toString() : '20',
                 defaultMonthlyFeeCents: turma.defaultMonthlyFeeCents ? (turma.defaultMonthlyFeeCents / 100).toString() : '',
                 status: turma.status || 'ATIVA'
             });
 
-            // Parse schedule (ex: "SEG 18:00, QUA 18:00")
-            if (turma.schedule) {
+            if (turma.schedules && turma.schedules.length > 0) {
+                setSchedules(turma.schedules.map((s: any) => ({
+                    dayOfWeek: s.dayOfWeek,
+                    startTime: s.startTime,
+                    teacherId: s.teacherId
+                })));
+            } else if (turma.schedule) {
+                // Fallback para migrar string legada
                 const parts = turma.schedule.split(',').map((s: string) => s.trim());
-                const days = parts.map((p: string) => p.split(' ')[0]).filter(Boolean);
-                const firstTime = parts[0]?.split(' ')[1];
-                setSelectedDays(days);
-                if (firstTime) setTime(firstTime);
+                const mapped = parts.map((p: string) => ({
+                    dayOfWeek: p.split(' ')[0],
+                    startTime: p.split(' ')[1] || '00:00'
+                })).filter(s => s.dayOfWeek);
+                setSchedules(mapped);
             }
         } catch (error: any) {
             console.error('Erro ao carregar turma:', error);
@@ -122,17 +131,22 @@ export default function TurmaCreateScreen() {
         }
     };
 
-    const toggleDay = (day: string) => {
-        if (selectedDays.includes(day)) {
-            setSelectedDays(selectedDays.filter(d => d !== day));
+    const addSchedule = () => {
+        setSchedules([...schedules, { dayOfWeek: 'SEG', startTime: '18:00' }]);
+    };
+
+    const removeSchedule = (index: number) => {
+        if (schedules.length > 1) {
+            setSchedules(schedules.filter((_, i) => i !== index));
         } else {
-            setSelectedDays([...selectedDays, day]);
+            Alert.alert('Aviso', 'A turma deve ter pelo menos um horário.');
         }
     };
 
-    const buildSchedule = () => {
-        if (selectedDays.length === 0) return '';
-        return selectedDays.map(day => `${day} ${time}`).join(', ');
+    const updateSchedule = (index: number, field: string, value: string | null) => {
+        const newSchedules = [...schedules];
+        (newSchedules[index] as any)[field] = value;
+        setSchedules(newSchedules);
     };
 
     const handleSave = async () => {
@@ -146,8 +160,17 @@ export default function TurmaCreateScreen() {
             return;
         }
 
-        if (selectedDays.length === 0) {
-            Alert.alert('Erro', 'Selecione pelo menos um dia da semana');
+        if (schedules.length === 0) {
+            Alert.alert('Erro', 'Adicione pelo menos um horário');
+            return;
+        }
+
+        // Validar duplicatas
+        const duplicates = schedules.some((s, i) =>
+            schedules.findIndex(other => other.dayOfWeek === s.dayOfWeek && other.startTime === s.startTime) !== i
+        );
+        if (duplicates) {
+            Alert.alert('Erro', 'Existem horários duplicados (mesmo dia e hora)');
             return;
         }
 
@@ -159,7 +182,8 @@ export default function TurmaCreateScreen() {
                 unitId: formData.unitId,
                 activityTypeId: formData.activityTypeId || null,
                 teacherId: formData.teacherId || null,
-                schedule: buildSchedule(),
+                capacity: parseInt(formData.capacity) || 0,
+                schedules: schedules,
                 defaultMonthlyFeeCents: formData.defaultMonthlyFeeCents ? Math.round(parseFloat(formData.defaultMonthlyFeeCents.replace(',', '.')) * 100) : null,
                 status: formData.status
             };
@@ -246,7 +270,10 @@ export default function TurmaCreateScreen() {
                         ))}
                     </ScrollView>
 
-                    <Text style={styles.label}>Professor Responsável</Text>
+                    <Text style={styles.label}>Professor Regente / Padrão</Text>
+                    <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>
+                        Este será o professor principal da turma e o padrão para os horários abaixo.
+                    </Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
                         {teachers.map((teacher) => (
                             <TouchableOpacity
@@ -273,6 +300,15 @@ export default function TurmaCreateScreen() {
                         placeholder="Ex: 150,00"
                         value={formData.defaultMonthlyFeeCents}
                         onChangeText={text => setFormData({ ...formData, defaultMonthlyFeeCents: text })}
+                        keyboardType="numeric"
+                    />
+
+                    <Text style={styles.label}>Capacidade da Turma (Alunos)</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Ex: 20"
+                        value={formData.capacity}
+                        onChangeText={text => setFormData({ ...formData, capacity: text })}
                         keyboardType="numeric"
                     />
 
@@ -310,44 +346,87 @@ export default function TurmaCreateScreen() {
                 </View>
 
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Horários</Text>
-
-                    <Text style={styles.label}>Dias da Semana *</Text>
-                    <View style={styles.daysGrid}>
-                        {DAYS_OF_WEEK.map((day) => (
-                            <TouchableOpacity
-                                key={day.key}
-                                style={[
-                                    styles.dayButton,
-                                    selectedDays.includes(day.key) && styles.dayButtonSelected
-                                ]}
-                                onPress={() => toggleDay(day.key)}
-                            >
-                                <Text style={[
-                                    styles.dayButtonText,
-                                    selectedDays.includes(day.key) && styles.dayButtonTextSelected
-                                ]}>
-                                    {day.key}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
+                    <View style={styles.rowBetween}>
+                        <Text style={styles.sectionTitle}>Horários da Turma</Text>
+                        <TouchableOpacity onPress={addSchedule} style={styles.addButtonMini}>
+                            <Ionicons name="add-circle" size={24} color="#4F46E5" />
+                        </TouchableOpacity>
                     </View>
 
-                    <Text style={styles.label}>Horário *</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Ex: 18:00"
-                        value={time}
-                        onChangeText={setTime}
-                        keyboardType="numbers-and-punctuation"
-                    />
+                    {schedules.map((sched, idx) => (
+                        <View key={idx} style={styles.scheduleRow}>
+                            <View style={styles.daySelector}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                    {DAYS_OF_WEEK.map((day) => (
+                                        <TouchableOpacity
+                                            key={day.key}
+                                            style={[
+                                                styles.dayMiniButton,
+                                                sched.dayOfWeek === day.key && styles.dayMiniButtonSelected
+                                            ]}
+                                            onPress={() => updateSchedule(idx, 'dayOfWeek', day.key)}
+                                        >
+                                            <Text style={[
+                                                styles.dayMiniText,
+                                                sched.dayOfWeek === day.key && styles.dayMiniTextSelected
+                                            ]}>
+                                                {day.key}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                            <View style={styles.timeInputRow}>
+                                <TextInput
+                                    style={styles.timeInput}
+                                    placeholder="18:00"
+                                    value={sched.startTime}
+                                    onChangeText={(t) => updateSchedule(idx, 'startTime', t)}
+                                    keyboardType="numbers-and-punctuation"
+                                    maxLength={5}
+                                />
+                                <TouchableOpacity onPress={() => removeSchedule(idx)} style={styles.removeButton}>
+                                    <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                                </TouchableOpacity>
+                            </View>
 
-                    {selectedDays.length > 0 && (
-                        <View style={styles.previewBox}>
-                            <Text style={styles.previewLabel}>Horário configurado:</Text>
-                            <Text style={styles.previewText}>{buildSchedule()}</Text>
+                            <View style={styles.teacherSelector}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.teacherMiniButton,
+                                            !sched.teacherId && styles.teacherMiniButtonSelected
+                                        ]}
+                                        onPress={() => updateSchedule(idx, 'teacherId', null)}
+                                    >
+                                        <Text style={[
+                                            styles.teacherMiniText,
+                                            !sched.teacherId && styles.teacherMiniTextSelected
+                                        ]}>
+                                            {formData.teacherId ? 'Seguir Padrão' : 'Sem Professor'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    {teachers.map((t) => (
+                                        <TouchableOpacity
+                                            key={t.id}
+                                            style={[
+                                                styles.teacherMiniButton,
+                                                sched.teacherId === t.id && styles.teacherMiniButtonSelected
+                                            ]}
+                                            onPress={() => updateSchedule(idx, 'teacherId', t.id)}
+                                        >
+                                            <Text style={[
+                                                styles.teacherMiniText,
+                                                sched.teacherId === t.id && styles.teacherMiniTextSelected
+                                            ]}>
+                                                {t.full_name}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
                         </View>
-                    )}
+                    ))}
                 </View>
             </ScrollView>
 
@@ -487,6 +566,88 @@ const styles = StyleSheet.create({
         flexWrap: 'wrap',
         gap: 8,
         marginTop: 8
+    },
+    rowBetween: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16
+    },
+    addButtonMini: {
+        padding: 4
+    },
+    scheduleRow: {
+        marginBottom: 20,
+        paddingBottom: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6'
+    },
+    daySelector: {
+        marginBottom: 12
+    },
+    dayMiniButton: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#D1D5DB',
+        marginRight: 8,
+        backgroundColor: '#FFF'
+    },
+    dayMiniButtonSelected: {
+        backgroundColor: '#4F46E5',
+        borderColor: '#4F46E5'
+    },
+    dayMiniText: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: '#6B7280'
+    },
+    dayMiniTextSelected: {
+        color: '#FFF'
+    },
+    timeInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12
+    },
+    timeInput: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: '#D1D5DB',
+        borderRadius: 8,
+        padding: 10,
+        fontSize: 16,
+        backgroundColor: '#F9FAFB'
+    },
+    removeButton: {
+        padding: 8,
+        backgroundColor: '#FEF2F2',
+        borderRadius: 8
+    },
+    teacherSelector: {
+        marginTop: 12
+    },
+    teacherMiniButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        marginRight: 6,
+        backgroundColor: '#F9FAFB'
+    },
+    teacherMiniButtonSelected: {
+        backgroundColor: '#EEF2FF',
+        borderColor: '#4F46E5'
+    },
+    teacherMiniText: {
+        fontSize: 11,
+        color: '#6B7280'
+    },
+    teacherMiniTextSelected: {
+        color: '#4F46E5',
+        fontWeight: 'bold'
     },
     chipRow: {
         marginTop: 8,

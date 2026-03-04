@@ -4,8 +4,9 @@ import { z } from 'zod'
 
 const AttendanceRecordSchema = z.object({
   studentId: z.string().uuid(),
-  turmaId: z.string().uuid(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  sessionId: z.string().uuid().optional(),
+  turmaId: z.string().uuid().optional().nullable(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   time: z.string().optional().nullable(),
   status: z.enum(['PRESENT', 'ABSENT', 'JUSTIFIED']),
   notes: z.string().optional()
@@ -20,18 +21,21 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
     }
 
     const query = z.object({
-      turmaId: z.string().uuid(),
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      sessionId: z.string().uuid().optional(),
+      turmaId: z.string().uuid().optional(),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       time: z.string().optional().nullable()
     }).parse((req as any).query)
 
     try {
       const records = await prisma.attendance.findMany({
         where: {
-          turmaId: query.turmaId,
-          date: query.date,
-          time: query.time,
-          organizationId: user.organizationId
+          organizationId: user.organizationId,
+          ...(query.sessionId ? { sessionId: query.sessionId } : {
+            turmaId: query.turmaId,
+            date: query.date,
+            time: query.time
+          })
         }
       })
 
@@ -60,10 +64,18 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
         const teacher = await prisma.teacher.findUnique({ where: { userId: user.id } })
         if (!teacher) return reply.status(403).send({ code: 'FORBIDDEN', message: 'Professor não encontrado' })
 
+        const targetTurmaId = body.sessionId
+          ? (await prisma.classSession.findUnique({ where: { id: body.sessionId } }))?.turmaId
+          : body.turmaId || undefined
+
+        if (!targetTurmaId) {
+          return reply.status(400).send({ code: 'INVALID_DATA', message: 'Sessão ou Turma inválida' })
+        }
+
         const teacherLink = await prisma.teacherTurma.findFirst({
           where: {
             teacherId: teacher.id,
-            turmaId: body.turmaId,
+            turmaId: targetTurmaId,
             organizationId: user.organizationId
           }
         })
@@ -77,10 +89,18 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
       }
 
       // Verificar se o aluno pertence à turma
+      const targetTurmaIdForStudent = body.sessionId
+        ? (await prisma.classSession.findUnique({ where: { id: body.sessionId } }))?.turmaId
+        : body.turmaId || undefined
+
+      if (!targetTurmaIdForStudent) {
+        return reply.status(400).send({ code: 'INVALID_DATA', message: 'Sessão ou Turma inválida' })
+      }
+
       const studentTurma = await prisma.studentTurma.findFirst({
         where: {
           studentId: body.studentId,
-          turmaId: body.turmaId,
+          turmaId: targetTurmaIdForStudent,
           organizationId: user.organizationId
         }
       })
@@ -93,15 +113,20 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
       }
 
       // Criar ou atualizar registro
-      const existingRecord = await prisma.attendance.findFirst({
-        where: {
-          studentId: body.studentId,
-          turmaId: body.turmaId,
-          date: body.date,
-          time: body.time,
-          organizationId: user.organizationId
-        }
-      })
+      const where: any = {
+        studentId: body.studentId,
+        organizationId: user.organizationId,
+      }
+
+      if (body.sessionId) {
+        where.sessionId = body.sessionId
+      } else {
+        where.turmaId = body.turmaId
+        where.date = body.date
+        where.time = body.time
+      }
+
+      const existingRecord = await prisma.attendance.findFirst({ where })
 
       if (existingRecord) {
         // Atualizar registro existente
@@ -123,8 +148,9 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
           data: {
             organizationId: user.organizationId,
             studentId: body.studentId,
-            turmaId: body.turmaId,
-            date: body.date,
+            sessionId: body.sessionId || undefined,
+            turmaId: body.turmaId || undefined,
+            date: body.date || undefined,
             time: body.time,
             status: body.status,
             notes: body.notes
@@ -295,6 +321,62 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
         code: 'INTERNAL_ERROR',
         message: 'Erro interno ao gerar relatório'
       })
+    }
+  })
+  // Obter ou criar sessão de aula
+  app.post('/attendance/session', async (req, reply) => {
+    const user = (req as any).currentUser
+    if (!user) return reply.status(401).send({ code: 'UNAUTHORIZED' })
+
+    const schema = z.object({
+      turmaId: z.string().uuid(),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      startTime: z.string().optional()
+    })
+
+    const { turmaId, date, startTime } = schema.parse((req as any).body)
+
+    try {
+      // 1. Verificar se já existe uma sessão para esta turma e data (e hora se fornecida)
+      let scheduleId: string | undefined
+
+      if (startTime) {
+        const schedule = await prisma.turmaSchedule.findFirst({
+          where: {
+            turmaId,
+            startTime,
+            organizationId: user.organizationId
+          }
+        })
+        scheduleId = schedule?.id
+      }
+
+      let session = await prisma.classSession.findFirst({
+        where: {
+          turmaId,
+          date,
+          turmaScheduleId: scheduleId,
+          organizationId: user.organizationId
+        }
+      })
+
+      if (!session) {
+        // 2. Criar nova sessão se não existir
+        session = await prisma.classSession.create({
+          data: {
+            organizationId: user.organizationId,
+            turmaId,
+            turmaScheduleId: scheduleId,
+            date,
+            status: 'SCHEDULED'
+          }
+        })
+      }
+
+      return { data: session }
+    } catch (error) {
+      console.error('Erro ao gerenciar sessão:', error)
+      return reply.status(500).send({ code: 'INTERNAL_ERROR' })
     }
   })
 }

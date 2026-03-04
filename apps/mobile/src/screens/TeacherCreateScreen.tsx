@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../context/AuthContext';
@@ -11,11 +12,23 @@ interface Unit {
     color?: string;
 }
 
+interface TurmaSchedule {
+    id: string;
+    dayOfWeek: string;
+    startTime: string;
+    teacherId?: string | null;
+    teacher?: {
+        full_name: string;
+        nickname?: string | null;
+    } | null;
+}
+
 interface Turma {
     id: string;
     name: string;
     unitId: string;
     schedule: string;
+    schedules?: TurmaSchedule[];
     teacherId?: string | null;
     teacher?: {
         full_name: string;
@@ -49,6 +62,7 @@ export default function TeacherCreateScreen() {
     const [password, setPassword] = useState('');
     const [hasUser, setHasUser] = useState(false);
     const [selectedTurmas, setSelectedTurmas] = useState<string[]>([]);
+    const [selectedSchedules, setSelectedSchedules] = useState<string[]>([]);
 
     useEffect(() => {
         loadInitialData();
@@ -110,14 +124,23 @@ export default function TeacherCreateScreen() {
             // Extrair IDs das turmas vinculadas de Teacher.units (formato retornado pelo backend)
             if (teacher.units) {
                 const turmaIds: string[] = [];
+                const scheduleIds: string[] = [];
                 teacher.units.forEach((unit: any) => {
                     if (unit.turmas) {
                         unit.turmas.forEach((turma: any) => {
                             turmaIds.push(turma.id);
+                            if (turma.schedules) {
+                                turma.schedules.forEach((s: any) => {
+                                    if (s.teacherId === teacherId) {
+                                        scheduleIds.push(s.id);
+                                    }
+                                });
+                            }
                         });
                     }
                 });
                 setSelectedTurmas(turmaIds);
+                setSelectedSchedules(scheduleIds);
             }
         } catch (error: any) {
             console.error('Erro ao carregar professor:', error);
@@ -132,6 +155,24 @@ export default function TeacherCreateScreen() {
             setSelectedTurmas(selectedTurmas.filter(id => id !== turmaId));
         } else {
             setSelectedTurmas([...selectedTurmas, turmaId]);
+        }
+    };
+
+    const toggleSchedule = (schedule: any) => {
+        const isOthers = schedule.teacherId && schedule.teacherId !== teacherId && !selectedSchedules.includes(schedule.id);
+
+        if (isOthers) {
+            Alert.alert(
+                'Aviso',
+                `Este horário já possui um professor atribuído: ${schedule.teacher?.nickname || schedule.teacher?.full_name || 'Desconhecido'}.\n\nPara alterar o professor deste horário específico, acesse o cadastro da Turma.`
+            );
+            return;
+        }
+
+        if (selectedSchedules.includes(schedule.id)) {
+            setSelectedSchedules(selectedSchedules.filter(id => id !== schedule.id));
+        } else {
+            setSelectedSchedules([...selectedSchedules, schedule.id]);
         }
     };
 
@@ -159,6 +200,7 @@ export default function TeacherCreateScreen() {
                 status: formData.status,
                 notes: formData.notes,
                 turmaIds: selectedTurmas,
+                scheduleIds: selectedSchedules,
                 role: formData.role,
                 createAccount: createAccount && !hasUser,
                 password: password.length >= 6 ? password : undefined
@@ -445,43 +487,87 @@ export default function TeacherCreateScreen() {
                                     const isSelected = selectedTurmas.includes(turma.id);
 
                                     return (
-                                        <TouchableOpacity
+                                        <View
                                             key={turma.id}
                                             style={[
                                                 styles.turmaOption,
                                                 isSelected && styles.turmaOptionSelected,
                                                 isAssignedToOther && styles.turmaOptionDisabled
                                             ]}
-                                            onPress={() => {
-                                                if (isAssignedToOther) {
-                                                    Alert.alert('Aviso', `Esta turma já pertence ao professor ${turma.teacher?.full_name}. Você deve primeiro desvinculá-la no cadastro dele.`);
-                                                    return;
-                                                }
-                                                toggleTurma(turma.id);
-                                            }}
-                                            disabled={!!isAssignedToOther}
                                         >
-                                            <View style={styles.turmaInfo}>
-                                                <Text style={[
-                                                    styles.turmaName,
-                                                    isSelected && styles.turmaNameSelected,
-                                                    isAssignedToOther && { color: '#9CA3AF' }
-                                                ]}>
-                                                    {turma.name}
-                                                </Text>
-                                                <Text style={[
-                                                    styles.turmaSchedule,
-                                                    isSelected && styles.turmaScheduleSelected,
-                                                    isAssignedToOther && { color: '#D1D5DB' }
-                                                ]}>
-                                                    {turma.schedule}
-                                                    {isAssignedToOther && ` • Resp: ${turma.teacher?.nickname || turma.teacher?.full_name}`}
-                                                </Text>
+                                            <TouchableOpacity
+                                                style={styles.turmaHeader}
+                                                onPress={() => {
+                                                    if (isAssignedToOther) {
+                                                        Alert.alert('Aviso', `Esta turma já possui um professor principal: ${turma.teacher?.nickname || turma.teacher?.full_name}.`);
+                                                        return;
+                                                    }
+                                                    toggleTurma(turma.id);
+                                                }}
+                                            >
+                                                <View style={styles.turmaInfo}>
+                                                    <Text style={[
+                                                        styles.turmaName,
+                                                        isSelected && styles.turmaNameSelected,
+                                                        isAssignedToOther && { color: '#9CA3AF' }
+                                                    ]}>
+                                                        {turma.name}
+                                                    </Text>
+                                                    <Text style={styles.turmaRespInfo}>
+                                                        Responsável: {turma.teacher?.nickname || turma.teacher?.full_name || 'Nenhum'}
+                                                    </Text>
+                                                </View>
+                                                {isSelected && (
+                                                    <Ionicons name="checkmark-circle" size={20} color="#4F46E5" />
+                                                )}
+                                            </TouchableOpacity>
+
+                                            <View style={styles.schedulesList}>
+                                                {turma.schedules && turma.schedules.length > 0 ? (
+                                                    turma.schedules.map((s, idx) => {
+                                                        const isMySchedule = selectedSchedules.includes(s.id);
+                                                        const isOthersSchedule = s.teacherId && s.teacherId !== teacherId && !isMySchedule;
+
+                                                        return (
+                                                            <TouchableOpacity
+                                                                key={idx}
+                                                                style={[
+                                                                    styles.scheduleItem,
+                                                                    isMySchedule && styles.scheduleItemJoined
+                                                                ]}
+                                                                onPress={() => toggleSchedule(s)}
+                                                            >
+                                                                <View style={styles.scheduleBadge}>
+                                                                    <Text style={styles.scheduleBadgeText}>{s.dayOfWeek}</Text>
+                                                                </View>
+                                                                <Text style={styles.scheduleTimeText}>{s.startTime}</Text>
+
+                                                                {(s.teacherId || isMySchedule) && (
+                                                                    <View style={[
+                                                                        styles.scheduleTeacherBadge,
+                                                                        (s.teacherId === teacherId || isMySchedule) && styles.scheduleTeacherBadgeOwn
+                                                                    ]}>
+                                                                        <Text style={[
+                                                                            styles.scheduleTeacherText,
+                                                                            (s.teacherId === teacherId || isMySchedule) && styles.scheduleTeacherTextOwn
+                                                                        ]}>
+                                                                            {(s.teacherId === teacherId || isMySchedule)
+                                                                                ? (formData.nickname || formData.full_name || 'Este Professor').toUpperCase()
+                                                                                : (s.teacher?.nickname || s.teacher?.full_name || 'OUTRO').toUpperCase()}
+                                                                        </Text>
+                                                                    </View>
+                                                                )}
+                                                                {isMySchedule && (
+                                                                    <Ionicons name="link" size={14} color="#059669" style={{ marginLeft: 'auto' }} />
+                                                                )}
+                                                            </TouchableOpacity>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <Text style={styles.turmaScheduleText}>{turma.schedule}</Text>
+                                                )}
                                             </View>
-                                            {isSelected && (
-                                                <Text style={styles.checkmark}>✓</Text>
-                                            )}
-                                        </TouchableOpacity>
+                                        </View>
                                     );
                                 })}
                             </View>
@@ -661,43 +747,102 @@ const styles = StyleSheet.create({
         borderBottomColor: '#E5E7EB'
     },
     turmaOption: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 12,
-        borderRadius: 8,
+        borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: '#E5E7EB',
         backgroundColor: '#FFF',
-        marginBottom: 8
+        marginBottom: 12,
+        overflow: 'hidden'
     },
     turmaOptionSelected: {
-        backgroundColor: '#EEF2FF',
-        borderColor: '#4F46E5'
+        borderColor: '#4F46E5',
+        backgroundColor: '#F5F3FF'
     },
     turmaOptionDisabled: {
         backgroundColor: '#F3F4F6',
         borderColor: '#E5E7EB',
         opacity: 0.7
     },
+    turmaHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6'
+    },
     turmaInfo: {
         flex: 1
     },
     turmaName: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#111827',
-        marginBottom: 2
+        fontSize: 15,
+        fontWeight: 'bold',
+        color: '#111827'
     },
     turmaNameSelected: {
         color: '#4F46E5'
     },
-    turmaSchedule: {
+    turmaRespInfo: {
+        fontSize: 12,
+        color: '#6B7280',
+        marginTop: 2
+    },
+    schedulesList: {
+        padding: 12,
+        backgroundColor: '#FAFAFA'
+    },
+    scheduleItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 8,
+        borderRadius: 8,
+        marginBottom: 6,
+        backgroundColor: '#FFF',
+        borderWidth: 1,
+        borderColor: '#F3F4F6'
+    },
+    scheduleItemJoined: {
+        borderColor: '#10B981',
+        backgroundColor: '#ECFDF5'
+    },
+    scheduleBadge: {
+        backgroundColor: '#EEF2FF',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        marginRight: 8
+    },
+    scheduleBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#4F46E5'
+    },
+    scheduleTimeText: {
+        fontSize: 13,
+        color: '#374151',
+        fontWeight: '500',
+        marginRight: 8
+    },
+    scheduleTeacherBadge: {
+        backgroundColor: '#F3F4F6',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 10
+    },
+    scheduleTeacherBadgeOwn: {
+        backgroundColor: '#ECFDF5'
+    },
+    scheduleTeacherText: {
+        fontSize: 10,
+        color: '#6B7280',
+        fontWeight: '600'
+    },
+    scheduleTeacherTextOwn: {
+        color: '#059669'
+    },
+    turmaScheduleText: {
         fontSize: 12,
         color: '#6B7280'
-    },
-    turmaScheduleSelected: {
-        color: '#6366F1'
     },
     checkmark: {
         fontSize: 18,

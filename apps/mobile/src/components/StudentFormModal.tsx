@@ -81,6 +81,7 @@ export default function StudentFormModal({ visible, studentId, onClose, onSucces
         graduation_date: '',
         unit: '',
         turmaIds: [] as string[],
+        scheduleIds: [] as string[],
         enrollment_date: new Date().toISOString().split('T')[0]
     });
 
@@ -164,6 +165,38 @@ export default function StudentFormModal({ visible, studentId, onClose, onSucces
         }
     }, [visible, studentId]);
 
+    const toggleSchedule = (scheduleId: string, turmaId: string) => {
+        const isSelected = capoeira.scheduleIds.includes(scheduleId);
+        let newScheduleIds = isSelected
+            ? capoeira.scheduleIds.filter(id => id !== scheduleId)
+            : [...capoeira.scheduleIds, scheduleId];
+
+        // Ensure the turma is selected if a schedule is selected
+        let newTurmaIds = [...capoeira.turmaIds];
+        if (!isSelected && !newTurmaIds.includes(turmaId)) {
+            newTurmaIds.push(turmaId);
+        }
+
+        setCapoeira({
+            ...capoeira,
+            scheduleIds: newScheduleIds,
+            turmaIds: newTurmaIds
+        });
+    };
+
+    function formatDateForDisplay(dateStr?: string) {
+        if (!dateStr) return 'Selecionar';
+        try {
+            // Se já estiver no formato brasileiro
+            if (dateStr.includes('/')) return dateStr;
+            const [year, month, day] = dateStr.split('-');
+            if (!year || !month || !day) return 'Selecionar';
+            return `${day}/${month}/${year}`;
+        } catch (e) {
+            return 'Selecionar';
+        }
+    }
+
     async function loadPickerData() {
         try {
             const [teachersRes, unitsRes, activityRes, settingsRes] = await Promise.all([
@@ -234,7 +267,7 @@ export default function StudentFormModal({ visible, studentId, onClose, onSucces
         setPessoal({ full_name: '', nickname: '', cpf: '', birth_date: '', status: true, activityTypeIds: [] });
         setContato({ phone: '', whatsapp: '', email: '', address_street: '', address_number: '', address_district: '', address_city: '', address_state: '', address_zip: '' });
         setResponsavel({ full_name: '', cpf: '', relationship: '', phone: '', whatsapp: '', email: '', is_financial_responsible: false, same_address: true });
-        setCapoeira({ graduation: '', graduation_date: '', unit: '', turmaIds: [], enrollment_date: new Date().toISOString().split('T')[0] });
+        setCapoeira({ graduation: '', graduation_date: '', unit: '', turmaIds: [], scheduleIds: [], enrollment_date: new Date().toISOString().split('T')[0] });
         setFinanceiro({ monthly_fee: '', due_day: '', payment_method: '' });
         setObs('');
         setActiveTab(0);
@@ -257,15 +290,16 @@ export default function StudentFormModal({ visible, studentId, onClose, onSucces
 
             const unitName = s.studentTurmas?.[0]?.turma?.unit?.name || '';
             const tIds = s.studentTurmas?.map((st: any) => st.turmaId) || [];
+            const sIds = s.schedules?.map((sc: any) => sc.id) || [];
 
-            setCapoeira(prev => ({
-                ...prev,
+            setCapoeira({
                 unit: unitName,
                 turmaIds: tIds,
+                scheduleIds: sIds,
                 graduation: s.graduations?.[0]?.level || '',
-                graduation_date: s.graduations?.[0]?.date ? new Date(s.graduations[0].date).toLocaleDateString('pt-BR') : '',
-                enrollment_date: s.enrollment_date || prev.enrollment_date
-            }));
+                graduation_date: s.graduations?.[0]?.date || '',
+                enrollment_date: s.enrollment_date || new Date().toISOString().split('T')[0]
+            });
 
             const notes = s.notes || '';
 
@@ -331,7 +365,7 @@ Telefone: ${responsavel.phone}
 
 [CAPOEIRA]
 Graduação: ${capoeira.graduation}
-Data Graduação: ${capoeira.graduation_date}
+Data Graduação: ${formatDateForDisplay(capoeira.graduation_date)}
 
 [FINANCEIRO]
 Mensalidade: ${financeiro.monthly_fee}
@@ -353,6 +387,7 @@ ${obs}
                 enrollment_date: capoeira.enrollment_date,
                 activityTypeIds: pessoal.activityTypeIds,
                 turmaIds: finalTurmaIds,
+                scheduleIds: capoeira.scheduleIds,
                 notes: extraInfo
             };
 
@@ -589,7 +624,7 @@ ${obs}
                             <TouchableOpacity onPress={() => setShowGradDatePicker(true)}>
                                 <View style={[styles.input, { justifyContent: 'center' }]}>
                                     <Text style={{ color: capoeira.graduation_date ? '#111827' : '#9CA3AF' }}>
-                                        {capoeira.graduation_date ? new Date(capoeira.graduation_date).toLocaleDateString('pt-BR') : 'Selecionar'}
+                                        {formatDateForDisplay(capoeira.graduation_date)}
                                     </Text>
                                 </View>
                             </TouchableOpacity>
@@ -660,27 +695,66 @@ ${obs}
                                             {unitTurmas.map((t: any) => {
                                                 const isSelected = capoeira.turmaIds.includes(t.id);
                                                 return (
-                                                    <TouchableOpacity
-                                                        key={t.id}
-                                                        style={[styles.activityChip, isSelected && styles.activityChipSelected]}
-                                                        onPress={() => {
-                                                            if (isSelected) {
-                                                                setCapoeira({
-                                                                    ...capoeira,
-                                                                    turmaIds: capoeira.turmaIds.filter(id => id !== t.id)
-                                                                });
-                                                            } else {
-                                                                setCapoeira({
-                                                                    ...capoeira,
-                                                                    turmaIds: [...capoeira.turmaIds, t.id]
-                                                                });
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Text style={[styles.activityChipText, isSelected && styles.activityChipTextSelected]}>
-                                                            {t.name} {t.schedule ? `(${t.schedule})` : ''}
-                                                        </Text>
-                                                    </TouchableOpacity>
+                                                    <View key={t.id} style={{ marginBottom: 16 }}>
+                                                        <TouchableOpacity
+                                                            style={[styles.activityChip, isSelected && styles.activityChipSelected]}
+                                                            onPress={() => {
+                                                                if (isSelected) {
+                                                                    setCapoeira({
+                                                                        ...capoeira,
+                                                                        turmaIds: capoeira.turmaIds.filter(id => id !== t.id),
+                                                                        scheduleIds: capoeira.scheduleIds.filter(id => !(t.schedules || []).some((s: any) => s.id === id))
+                                                                    });
+                                                                } else {
+                                                                    setCapoeira({
+                                                                        ...capoeira,
+                                                                        turmaIds: [...capoeira.turmaIds, t.id]
+                                                                    });
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Text style={[styles.activityChipText, isSelected && styles.activityChipTextSelected]}>
+                                                                {t.name}
+                                                            </Text>
+                                                        </TouchableOpacity>
+
+                                                        {isSelected && t.schedules && t.schedules.length > 0 && (
+                                                            <View style={{ marginTop: 8, paddingLeft: 12 }}>
+                                                                <Text style={{ fontSize: 11, color: '#6B7280', marginBottom: 4, fontWeight: '600' }}>HORÁRIOS DA TURMA:</Text>
+                                                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                                                                    {t.schedules
+                                                                        .slice()
+                                                                        .sort((a: any, b: any) => {
+                                                                            const days = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM'];
+                                                                            const dayA = days.indexOf(a.dayOfWeek);
+                                                                            const dayB = days.indexOf(b.dayOfWeek);
+                                                                            if (dayA !== dayB) return dayA - dayB;
+                                                                            return a.startTime.localeCompare(b.startTime);
+                                                                        })
+                                                                        .map((s: any) => {
+                                                                            const isScheduleSelected = capoeira.scheduleIds.includes(s.id);
+                                                                            return (
+                                                                                <TouchableOpacity
+                                                                                    key={s.id}
+                                                                                    style={[
+                                                                                        styles.scheduleBadge,
+                                                                                        isScheduleSelected && styles.scheduleBadgeSelected
+                                                                                    ]}
+                                                                                    onPress={() => toggleSchedule(s.id, t.id)}
+                                                                                >
+                                                                                    <Text style={[
+                                                                                        styles.scheduleBadgeText,
+                                                                                        isScheduleSelected && styles.scheduleBadgeTextSelected
+                                                                                    ]}>
+                                                                                        {s.dayOfWeek} {s.startTime}
+                                                                                    </Text>
+                                                                                </TouchableOpacity>
+                                                                            );
+                                                                        })}
+                                                                </View>
+                                                            </View>
+                                                        )}
+                                                    </View>
                                                 );
                                             })}
                                         </View>
@@ -848,5 +922,26 @@ const styles = StyleSheet.create({
         backgroundColor: '#F3F4F6',
         borderColor: '#E5E7EB',
         opacity: 0.8
-    }
+    },
+    scheduleBadge: {
+        backgroundColor: '#F3F4F6',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    scheduleBadgeSelected: {
+        backgroundColor: '#EEF2FF',
+        borderColor: '#4F46E5',
+    },
+    scheduleBadgeText: {
+        fontSize: 12,
+        color: '#6B7280',
+        fontWeight: '500',
+    },
+    scheduleBadgeTextSelected: {
+        color: '#4F46E5',
+        fontWeight: 'bold',
+    },
 });

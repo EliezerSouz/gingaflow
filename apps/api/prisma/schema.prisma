@@ -28,6 +28,8 @@ model Organization {
   teachers          Teacher[]
   teacherTurmas     TeacherTurma[]
   turmas            Turma[]
+  turmaSchedules    TurmaSchedule[]
+  classSessions     ClassSession[]
   units             Unit[]
   users             User[]
 }
@@ -68,6 +70,7 @@ model Student {
   organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   activities          StudentActivity[]
   studentTurmas       StudentTurma[]
+  schedules           TurmaSchedule[]   @relation("StudentSchedules")
 
   @@unique([organizationId, cpf])
 }
@@ -92,6 +95,7 @@ model Teacher {
   user                User?          @relation(fields: [userId], references: [id])
   teacherTurmas       TeacherTurma[] @relation("TeacherTurmaRel")
   turmas              Turma[]        @relation("TurmaTeacher")
+  schedules           TurmaSchedule[] @relation("ScheduleTeacher")
 
   @@unique([organizationId, cpf])
 }
@@ -112,25 +116,61 @@ model Unit {
 }
 
 model Turma {
-  id                     String         @id @default(uuid())
+  id                     String          @id @default(uuid())
   organizationId         String
   name                   String
   unitId                 String
   activityTypeId         String?
   teacherId              String?
-  schedule               String?
+  schedule               String? // Manter temporariamente para migração, depois pode ser removido ou marcado como opcional
+  capacity               Int?            @default(0)
   defaultMonthlyFeeCents Int?
   defaultPaymentMethod   String?
   status                 String
-  created_at             DateTime       @default(now())
-  updated_at             DateTime       @updatedAt
+  created_at             DateTime        @default(now())
+  updated_at             DateTime        @updatedAt
   attendances            Attendance[]
   studentLinks           StudentTurma[]
   teacherLinks           TeacherTurma[]
-  activityType           ActivityType?  @relation(fields: [activityTypeId], references: [id])
-  organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  teacher                Teacher?       @relation("TurmaTeacher", fields: [teacherId], references: [id])
-  unit                   Unit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  schedules              TurmaSchedule[]
+  classSessions          ClassSession[]
+  activityType           ActivityType?   @relation(fields: [activityTypeId], references: [id])
+  organization           Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teacher                Teacher?        @relation("TurmaTeacher", fields: [teacherId], references: [id])
+  unit                   Unit            @relation(fields: [unitId], references: [id], onDelete: Cascade)
+}
+
+model TurmaSchedule {
+  id             String       @id @default(uuid())
+  organizationId String
+  turmaId        String
+  dayOfWeek      String // SEG, TER, QUA, QUI, SEX, SAB, DOM
+  startTime      String // HH:mm
+  teacherId      String?
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  turma          Turma          @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  teacher        Teacher?       @relation("ScheduleTeacher", fields: [teacherId], references: [id])
+  classSessions  ClassSession[]
+  students       Student[]      @relation("StudentSchedules")
+
+  @@unique([turmaId, dayOfWeek, startTime])
+}
+
+model ClassSession {
+  id              String         @id @default(uuid())
+  organizationId  String
+  turmaId         String
+  turmaScheduleId String?
+  date            String // ISO 2024-03-04
+  status          String // SCHEDULED, COMPLETED, CANCELLED
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  turma           Turma          @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  schedule        TurmaSchedule? @relation(fields: [turmaScheduleId], references: [id])
+  attendances     Attendance[]
 }
 
 model Payment {
@@ -169,21 +209,23 @@ model Graduation {
 }
 
 model Attendance {
-  id             String       @id @default(uuid())
+  id             String        @id @default(uuid())
   organizationId String
   studentId      String
-  turmaId        String
-  date           String
-  status         String
+  turmaId        String? // Optional for legacy
+  sessionId      String? // New session relationship
+  date           String? // Legacy
+  status         String // PRESENT, ABSENT, JUSTIFIED
   notes          String?
-  created_at     DateTime     @default(now())
-  updated_at     DateTime     @updatedAt
-  time           String?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  turma          Turma        @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+  time           String? // Legacy
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student        Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  turma          Turma?        @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  session        ClassSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  @@unique([studentId, turmaId, date, time])
+  @@unique([studentId, sessionId])
 }
 
 model AppSettings {
@@ -246,14 +288,18 @@ model TeacherTurma {
 }
 
 model StudentTurma {
-  id             String       @id @default(uuid())
-  organizationId String
-  studentId      String
-  turmaId        String
-  created_at     DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  turma          Turma        @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  id                    String       @id @default(uuid())
+  organizationId        String
+  studentId             String
+  turmaId               String
+  status                String       @default("ACTIVE") // ACTIVE, INACTIVE, DROPPED
+  startDate             String? // Enrollment start
+  endDate               String? // Enrollment end
+  customMonthlyFeeCents Int? // Override for this enrollment
+  created_at            DateTime     @default(now())
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student               Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  turma                 Turma        @relation(fields: [turmaId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, turmaId])
 }

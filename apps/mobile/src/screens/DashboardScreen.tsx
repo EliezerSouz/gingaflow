@@ -1,6 +1,6 @@
 // DASHBOARD V3 - REAL DATA ONLY
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions, Image, Modal, Pressable } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
@@ -8,6 +8,7 @@ import { Card } from '../components/ui/Card';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SimpleDrawer } from '../components/SimpleDrawer';
 import { useAuth } from '../context/AuthContext';
+import { CordaBadge } from '../components/ui/CordaBadge';
 
 const { width } = Dimensions.get('window');
 
@@ -34,6 +35,17 @@ interface DashboardData {
         count: number;
         enrolledCount: number;
         status: string;
+        students?: Array<{
+            id: string;
+            name: string;
+            cord?: {
+                color: string,
+                colorLeft?: string,
+                colorRight?: string,
+                pontaLeft?: string,
+                pontaRight?: string
+            }
+        }>;
     }>;
     finance: {
         monthlyRevenue: number;
@@ -56,6 +68,7 @@ export default function DashboardScreen() {
     const { signOut } = useAuth();
     const [data, setData] = useState<DashboardData | null>(null);
     const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+    const [selectedClassForStudents, setSelectedClassForStudents] = useState<any | null>(null);
 
     const currentDate = useMemo(() => {
         const d = new Date();
@@ -110,9 +123,9 @@ export default function DashboardScreen() {
         );
     }
 
-    function StatusCard({ icon, title, value, color }: any) {
+    function StatusCard({ icon, title, value, color, onPress }: any) {
         return (
-            <TouchableOpacity style={styles.statusCard}>
+            <TouchableOpacity style={styles.statusCard} onPress={onPress}>
                 <View style={[styles.statusIconBg, { backgroundColor: color + '15' }]}>
                     <Ionicons name={icon} size={20} color={color} />
                 </View>
@@ -276,10 +289,34 @@ export default function DashboardScreen() {
                 {/* 3. STATUS */}
                 <SectionTitle title="Status da Academia" />
                 <View style={styles.statusGrid}>
-                    <StatusCard icon="people" title="Alunos" value={data?.status.activeStudents || 0} color="#4F46E5" />
-                    <StatusCard icon="school" title="Profs" value={data?.status.activeTeachers || 0} color="#8B5CF6" />
-                    <StatusCard icon="business" title="Unidades" value={data?.status.unitsCount || 0} color="#EF4444" />
-                    <StatusCard icon="calendar" title="Turmas" value={data?.status.turmasCount || 0} color="#3B82F6" />
+                    <StatusCard
+                        icon="people"
+                        title="Alunos"
+                        value={data?.status.activeStudents || 0}
+                        color="#4F46E5"
+                        onPress={() => navigation.navigate('Acadêmico')}
+                    />
+                    <StatusCard
+                        icon="school"
+                        title="Profs"
+                        value={data?.status.activeTeachers || 0}
+                        color="#8B5CF6"
+                        onPress={() => navigation.navigate('Teachers')}
+                    />
+                    <StatusCard
+                        icon="business"
+                        title="Unidades"
+                        value={data?.status.unitsCount || 0}
+                        color="#EF4444"
+                        onPress={() => navigation.navigate('Units')}
+                    />
+                    <StatusCard
+                        icon="layers"
+                        title="Turmas"
+                        value={data?.status.turmasCount || 0}
+                        color="#3B82F6"
+                        onPress={() => navigation.navigate('Turmas')}
+                    />
                 </View>
 
                 {/* 4. AULAS DE HOJE */}
@@ -302,7 +339,10 @@ export default function DashboardScreen() {
                                         <Text style={styles.className}>{item.name}</Text>
                                         <Text style={styles.teacherName}>{item.teacher}</Text>
                                     </View>
-                                    <View style={styles.classStats}>
+                                    <TouchableOpacity
+                                        style={styles.classStats}
+                                        onPress={() => setSelectedClassForStudents(item)}
+                                    >
                                         <Text style={styles.classCount}>{item.enrolledCount || 0} alunos</Text>
                                         <Text style={[
                                             styles.classStatus,
@@ -310,13 +350,84 @@ export default function DashboardScreen() {
                                         ]}>
                                             {item.status}
                                         </Text>
-                                    </View>
+                                    </TouchableOpacity>
                                 </View>
                                 {index < data.classesToday.length - 1 && <View style={styles.divider} />}
                             </React.Fragment>
                         ))
                     )}
                 </Card>
+
+                {/* Modal de Alunos da Aula */}
+                <Modal
+                    visible={!!selectedClassForStudents}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setSelectedClassForStudents(null)}
+                >
+                    <Pressable
+                        style={styles.modalOverlay}
+                        onPress={() => setSelectedClassForStudents(null)}
+                    >
+                        <View style={styles.studentsModalContainer} onStartShouldSetResponder={() => true}>
+                            <View style={styles.modalHandle} />
+                            <Text style={styles.modalTitle}>Alunos Matriculados</Text>
+                            <Text style={styles.modalSubtitle}>
+                                {selectedClassForStudents?.name} - {selectedClassForStudents?.time}
+                            </Text>
+
+                            <ScrollView style={styles.studentsListScroll} showsVerticalScrollIndicator={false}>
+                                {!selectedClassForStudents?.students || selectedClassForStudents.students.length === 0 ? (
+                                    <View style={{ padding: 40, alignItems: 'center' }}>
+                                        <Ionicons name="people-outline" size={32} color="#D1D5DB" />
+                                        <Text style={{ color: '#9CA3AF', marginTop: 10 }}>Nenhum aluno matriculado neste horário</Text>
+                                    </View>
+                                ) : (
+                                    selectedClassForStudents.students.map((student: any) => (
+                                        <TouchableOpacity
+                                            key={student.id}
+                                            style={styles.studentItem}
+                                            onPress={() => {
+                                                setSelectedClassForStudents(null);
+                                                navigation.navigate('StudentDetails', { id: student.id });
+                                            }}
+                                        >
+                                            <View style={styles.studentInfo}>
+                                                <View style={styles.studentAvatarContainer}>
+                                                    {student.cord ? (
+                                                        <CordaBadge
+                                                            size="small"
+                                                            graduacao=""
+                                                            colorLeft={student.cord.colorLeft || student.cord.color}
+                                                            colorRight={student.cord.colorRight}
+                                                            pontaLeft={student.cord.pontaLeft}
+                                                            pontaRight={student.cord.pontaRight}
+                                                        />
+                                                    ) : (
+                                                        <View style={styles.studentAvatar}>
+                                                            <Text style={styles.studentAvatarText}>
+                                                                {student.name.substring(0, 1).toUpperCase()}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                                <Text style={styles.studentNameLine}>{student.name}</Text>
+                                            </View>
+                                            <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                                        </TouchableOpacity>
+                                    ))
+                                )}
+                            </ScrollView>
+
+                            <TouchableOpacity
+                                style={styles.modalCloseButton}
+                                onPress={() => setSelectedClassForStudents(null)}
+                            >
+                                <Text style={styles.modalCloseButtonText}>Fechar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </Pressable>
+                </Modal>
 
                 {/* 5. FINANCEIRO */}
                 <SectionTitle title="Performance Financeira" />
@@ -385,8 +496,8 @@ export default function DashboardScreen() {
                 <SectionTitle title="Menu de Operações" />
                 <View style={styles.quickActionsGrid}>
                     <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Acadêmico')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#E0E7FF' }]}><Ionicons name="person-add" size={24} color="#4F46E5" /></View>
-                        <Text style={styles.qaLabel}>Novo Aluno</Text>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#E0E7FF' }]}><Ionicons name="people" size={24} color="#4F46E5" /></View>
+                        <Text style={styles.qaLabel}>Alunos</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Agenda')}>
                         <View style={[styles.qaIconBg, { backgroundColor: '#DBEAFE' }]}><Ionicons name="calendar" size={24} color="#3B82F6" /></View>
@@ -401,7 +512,7 @@ export default function DashboardScreen() {
                         <Text style={styles.qaLabel}>Unidades</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Turmas')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#FEF3C7' }]}><Ionicons name="people" size={24} color="#F59E0B" /></View>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#FEF3C7' }]}><Ionicons name="layers" size={24} color="#F59E0B" /></View>
                         <Text style={styles.qaLabel}>Turmas</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Teachers')}>
@@ -857,5 +968,90 @@ const styles = StyleSheet.create({
     },
     unitChipTextActive: {
         color: '#FFF'
+    },
+    // Modal de Alunos
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end'
+    },
+    studentsModalContainer: {
+        backgroundColor: '#FFF',
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        padding: 24,
+        maxHeight: '80%',
+        minHeight: 400
+    },
+    modalHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#E5E7EB',
+        alignSelf: 'center',
+        marginBottom: 16
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#111827',
+        textAlign: 'center'
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        color: '#6B7280',
+        textAlign: 'center',
+        marginBottom: 20
+    },
+    studentsListScroll: {
+        flex: 1
+    },
+    studentItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6'
+    },
+    studentInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12
+    },
+    studentAvatar: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#EEF2FF',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    studentAvatarText: {
+        color: '#4F46E5',
+        fontSize: 14,
+        fontWeight: 'bold'
+    },
+    studentNameLine: {
+        fontSize: 15,
+        color: '#374151',
+        fontWeight: '500'
+    },
+    modalCloseButton: {
+        backgroundColor: '#F3F4F6',
+        padding: 16,
+        borderRadius: 16,
+        alignItems: 'center',
+        marginTop: 16
+    },
+    modalCloseButtonText: {
+        color: '#4B5563',
+        fontWeight: 'bold',
+        fontSize: 16
+    },
+    studentAvatarContainer: {
+        width: 46,
+        alignItems: 'center',
+        justifyContent: 'center'
     }
 });

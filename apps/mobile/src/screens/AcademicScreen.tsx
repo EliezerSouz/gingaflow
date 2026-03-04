@@ -63,7 +63,12 @@ export default function AcademicScreen() {
     return (
         <ScreenContainer>
             <View style={styles.header}>
-                <Text style={styles.title}>Alunos</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <TouchableOpacity onPress={() => navigation.navigate('Dashboard')}>
+                        <Ionicons name="arrow-back" size={24} color="#111827" />
+                    </TouchableOpacity>
+                    <Text style={styles.title}>Alunos</Text>
+                </View>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity onPress={loadData} style={styles.iconButton}>
                         <Ionicons name="refresh" size={20} color="#4F46E5" />

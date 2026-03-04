@@ -16,7 +16,13 @@ const TurmaBody = z.object({
   unitId: z.string().uuid(),
   activityTypeId: z.string().uuid().nullable().optional(),
   teacherId: z.string().uuid().nullable().optional(),
-  schedule: z.string().nullable().optional(),
+  capacity: z.number().int().min(0).optional(),
+  schedules: z.array(z.object({
+    dayOfWeek: z.enum(['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM']),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/),
+    teacherId: z.string().uuid().nullable().optional()
+  })).optional(),
+  schedule: z.string().nullable().optional(), // Deprecated
   defaultMonthlyFeeCents: z.number().int().nullable().optional(),
   defaultPaymentMethod: z.string().nullable().optional(),
   status: z.enum(['ATIVA', 'INATIVA'])
@@ -36,7 +42,7 @@ export async function registerUnitRoutes(app: FastifyInstance) {
         where: {
           userId: user.id,
           organizationId: user.organizationId
-        }
+        },
       })
       if (teacher) {
         teacherId = teacher.id
@@ -63,7 +69,10 @@ export async function registerUnitRoutes(app: FastifyInstance) {
             ]
           } : undefined,
           orderBy: { name: 'asc' },
-          include: { teacher: true }
+          include: {
+            teacher: true,
+            schedules: true
+          }
         }
       }
     })
@@ -134,7 +143,10 @@ export async function registerUnitRoutes(app: FastifyInstance) {
       include: {
         turmas: {
           orderBy: { name: 'asc' },
-          include: { teacher: true }
+          include: {
+            teacher: true,
+            schedules: true
+          }
         }
       }
     })
@@ -156,7 +168,19 @@ export async function registerUnitRoutes(app: FastifyInstance) {
         organizationId: user.organizationId
       },
       orderBy: { name: 'asc' },
-      include: { teacher: true }
+      include: {
+        teacher: true,
+        schedules: {
+          include: { teacher: true },
+          orderBy: [
+            { dayOfWeek: 'asc' },
+            { startTime: 'asc' }
+          ]
+        },
+        _count: {
+          select: { studentLinks: true }
+        }
+      }
     })
     return { data: items }
   })
@@ -170,26 +194,35 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(422).send({ code: 'VALIDATION_ERROR', details: parsed.error.issues })
     }
-    const data = parsed.data
+    const { schedules, ...rest } = parsed.data
     const created = await prisma.turma.create({
       data: {
         organizationId: user.organizationId,
-        name: data.name,
-        unitId: data.unitId,
-        activityTypeId: data.activityTypeId ?? null,
-        teacherId: data.teacherId ?? null,
-        schedule: data.schedule ?? null,
-        status: data.status,
-        defaultMonthlyFeeCents: data.defaultMonthlyFeeCents ?? null,
-        defaultPaymentMethod: data.defaultPaymentMethod ?? null
+        name: rest.name,
+        unitId: rest.unitId,
+        activityTypeId: rest.activityTypeId ?? null,
+        teacherId: rest.teacherId ?? null,
+        schedule: rest.schedule ?? null,
+        capacity: rest.capacity ?? 0,
+        status: rest.status,
+        defaultMonthlyFeeCents: rest.defaultMonthlyFeeCents ?? null,
+        defaultPaymentMethod: rest.defaultPaymentMethod ?? null,
+        schedules: schedules ? {
+          create: schedules.map(s => ({
+            organizationId: user.organizationId,
+            dayOfWeek: s.dayOfWeek,
+            startTime: s.startTime,
+            teacherId: s.teacherId
+          }))
+        } : undefined
       }
     })
 
-    if (data.teacherId) {
+    if (rest.teacherId) {
       await prisma.teacherTurma.create({
         data: {
           organizationId: user.organizationId,
-          teacherId: data.teacherId,
+          teacherId: rest.teacherId,
           turmaId: created.id
         }
       }).catch(() => { }) // Ignore if already exists (unlikely in POST)
@@ -208,51 +241,87 @@ export async function registerUnitRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(422).send({ code: 'VALIDATION_ERROR', details: parsed.error.issues })
     }
-    const data = parsed.data
-    const updated = await prisma.turma.update({
-      where: {
-        id: params.id,
-        organizationId: user.organizationId
-      },
-      data: {
-        name: data.name,
-        unitId: data.unitId,
-        activityTypeId: data.activityTypeId !== undefined ? data.activityTypeId : undefined,
-        teacherId: data.teacherId !== undefined ? data.teacherId : undefined,
-        schedule: data.schedule ?? null,
-        status: data.status,
-        defaultMonthlyFeeCents: data.defaultMonthlyFeeCents ?? null,
-        defaultPaymentMethod: data.defaultPaymentMethod ?? null
-      }
-    })
+    const { schedules: newSchedules, ...rest } = parsed.data
 
-    // Sync TeacherTurma link
-    if (data.teacherId !== undefined) {
-      if (data.teacherId === null) {
-        // Option 1: User set teacher to none. We could remove all links.
-        await prisma.teacherTurma.deleteMany({
-          where: {
-            turmaId: params.id,
-            organizationId: user.organizationId
-          }
+    const updated = await prisma.$transaction(async (tx) => {
+      // 1. Atualizar dados básicos da turma
+      const turma = await tx.turma.update({
+        where: { id: params.id, organizationId: user.organizationId },
+        data: {
+          name: rest.name,
+          unitId: rest.unitId,
+          activityTypeId: rest.activityTypeId !== undefined ? rest.activityTypeId : undefined,
+          teacherId: rest.teacherId !== undefined ? rest.teacherId : undefined,
+          schedule: rest.schedule ?? undefined,
+          capacity: rest.capacity ?? undefined,
+          status: rest.status,
+          defaultMonthlyFeeCents: rest.defaultMonthlyFeeCents ?? undefined,
+          defaultPaymentMethod: rest.defaultPaymentMethod ?? undefined,
+        }
+      })
+
+      // 2. Sincronizar Horários se fornecidos
+      if (newSchedules) {
+        const currentSchedules = await tx.turmaSchedule.findMany({
+          where: { turmaId: params.id }
         })
-      } else {
-        // Option 2: Main teacher changed. Clear old ones and set new one.
-        await prisma.teacherTurma.deleteMany({
-          where: {
-            turmaId: params.id,
-            organizationId: user.organizationId
-          }
-        })
-        await prisma.teacherTurma.create({
-          data: {
-            organizationId: user.organizationId,
-            teacherId: data.teacherId,
-            turmaId: params.id
-          }
-        }).catch(() => { })
+
+        // Identificar horários para deletar (aqueles que não estão no novo payload)
+        const toDelete = currentSchedules.filter(curr =>
+          !newSchedules.find(next => next.dayOfWeek === curr.dayOfWeek && next.startTime === curr.startTime)
+        )
+
+        if (toDelete.length > 0) {
+          await tx.turmaSchedule.deleteMany({
+            where: { id: { in: toDelete.map(d => d.id) } }
+          })
+        }
+
+        // Criar ou Atualizar os novos horários
+        for (const s of newSchedules) {
+          await tx.turmaSchedule.upsert({
+            where: {
+              turmaId_dayOfWeek_startTime: {
+                turmaId: params.id,
+                dayOfWeek: s.dayOfWeek,
+                startTime: s.startTime
+              }
+            },
+            create: {
+              organizationId: user.organizationId,
+              turmaId: params.id,
+              dayOfWeek: s.dayOfWeek,
+              startTime: s.startTime,
+              teacherId: s.teacherId
+            },
+            update: {
+              teacherId: s.teacherId
+            }
+          })
+        }
       }
-    }
+
+      // 3. Sincronizar Professor principal (TeacherTurma)
+      if (rest.teacherId !== undefined) {
+        await tx.teacherTurma.deleteMany({
+          where: { turmaId: params.id, organizationId: user.organizationId }
+        })
+        if (rest.teacherId !== null) {
+          await tx.teacherTurma.create({
+            data: {
+              organizationId: user.organizationId,
+              teacherId: rest.teacherId,
+              turmaId: params.id
+            }
+          }).catch(() => { })
+        }
+      }
+
+      return tx.turma.findUnique({
+        where: { id: params.id },
+        include: { schedules: true }
+      })
+    })
 
     return updated
   })
@@ -271,7 +340,10 @@ export async function registerUnitRoutes(app: FastifyInstance) {
       include: {
         unit: true,
         teacher: true,
-        activityType: true
+        activityType: true,
+        schedules: {
+          include: { teacher: true }
+        }
       }
     })
     if (!turma) {
