@@ -124,6 +124,7 @@ model Turma {
   teacherId              String?
   schedule               String? // Manter temporariamente para migração, depois pode ser removido ou marcado como opcional
   capacity               Int?            @default(0)
+  durationMinutes        Int?            @default(60)
   defaultMonthlyFeeCents Int?
   defaultPaymentMethod   String?
   status                 String

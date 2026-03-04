@@ -29,12 +29,19 @@ interface DashboardData {
     };
     classesToday: Array<{
         id: string;
+        turmaId: string;
         name: string;
         time: string;
+        durationMinutes: number;
         teacher: string;
         count: number;
         enrolledCount: number;
-        status: string;
+        status: 'AGENDADA' | 'EM_ANDAMENTO' | 'FINALIZADA';
+        occupancyStatus: string;
+        attendanceStatus: 'BLOQUEADA' | 'DISPONÍVEL' | 'ENCERRADA';
+        attendanceAvailable: boolean;
+        unitName: string;
+        unitColor: string;
         students?: Array<{
             id: string;
             name: string;
@@ -319,44 +326,108 @@ export default function DashboardScreen() {
                     />
                 </View>
 
-                {/* 4. AULAS DE HOJE */}
-                <SectionTitle title="Aulas de Hoje" subtitle="Dados dinâmicos do banco" />
-                <Card style={styles.classesCard}>
-                    {!data?.classesToday || data.classesToday.length === 0 ? (
+                {/* 4. AULAS DE HOJE - TIMELINE */}
+                <SectionTitle title="Grade de Aulas" subtitle="Acompanhamento em tempo real" />
+
+                {!data?.classesToday || data.classesToday.length === 0 ? (
+                    <Card style={styles.classesCard}>
                         <View style={{ padding: 40, alignItems: 'center' }}>
                             <Ionicons name="calendar-outline" size={32} color="#D1D5DB" />
                             <Text style={{ color: '#9CA3AF', marginTop: 10 }}>Nenhuma aula para hoje</Text>
                         </View>
-                    ) : (
-                        data.classesToday.map((item, index) => (
-                            <React.Fragment key={item.id}>
-                                <View style={styles.classItem}>
-                                    <View style={styles.classTime}>
-                                        <Text style={styles.timeLabel}>{item.time}</Text>
-                                        <View style={[styles.statusDot, { backgroundColor: item.count > 0 ? '#10B981' : '#F59E0B' }]} />
+                    </Card>
+                ) : (
+                    <View style={styles.timelineContainer}>
+                        {data.classesToday.map((item, index) => {
+                            const isFirst = index === 0;
+                            const isLast = index === data.classesToday.length - 1;
+
+                            let statusColor = '#FBBF24'; // AGENDADA
+                            let statusText = 'PRÓXIMA';
+                            let statusIcon: any = 'time-outline';
+
+                            if (item.status === 'EM_ANDAMENTO') {
+                                statusColor = '#10B981';
+                                statusText = 'EM ANDAMENTO';
+                                statusIcon = 'play-circle-outline';
+                            } else if (item.status === 'FINALIZADA') {
+                                statusColor = '#6B7280';
+                                statusText = 'FINALIZADA';
+                                statusIcon = 'checkmark-circle-outline';
+                            }
+
+                            return (
+                                <View key={item.id} style={styles.timelineItem}>
+                                    {/* Linha da timeline */}
+                                    <View style={styles.timelineTrack}>
+                                        <View style={[styles.timelineLine, isFirst && styles.timelineLineFirst, isLast && styles.timelineLineLast]} />
+                                        <View style={[styles.timelineDot, { backgroundColor: statusColor }]}>
+                                            <View style={[styles.timelineDotInner, { backgroundColor: '#fff' }]} />
+                                        </View>
                                     </View>
-                                    <View style={styles.classInfo}>
-                                        <Text style={styles.className}>{item.name}</Text>
-                                        <Text style={styles.teacherName}>{item.teacher}</Text>
+
+                                    {/* Card da Aula */}
+                                    <View style={[styles.timelineContent, item.status === 'EM_ANDAMENTO' && styles.activeClassContent]}>
+                                        <View style={styles.classHeader}>
+                                            <View style={styles.timeInfo}>
+                                                <Text style={styles.timelineTime}>{item.time}</Text>
+                                                <Text style={styles.durationText}>{item.durationMinutes} min</Text>
+                                            </View>
+
+                                            <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
+                                                <Ionicons name={statusIcon} size={12} color={statusColor} />
+                                                <Text style={[styles.statusBadgeText, { color: statusColor }]}>{statusText}</Text>
+                                            </View>
+                                        </View>
+
+                                        <View style={styles.classMainInfo}>
+                                            <View style={{ flex: 1 }}>
+                                                <View style={styles.nameRow}>
+                                                    <Text style={styles.timelineClassName}>{item.name}</Text>
+                                                    <View style={[styles.unitBadge, { backgroundColor: item.unitColor + '15', borderColor: item.unitColor + '30' }]}>
+                                                        <Text style={[styles.unitBadgeText, { color: item.unitColor }]}>{item.unitName}</Text>
+                                                    </View>
+                                                </View>
+                                                <Text style={styles.timelineTeacherName}>{item.teacher}</Text>
+                                            </View>
+
+                                            <TouchableOpacity
+                                                style={styles.occupancyInfo}
+                                                onPress={() => setSelectedClassForStudents(item)}
+                                            >
+                                                <Ionicons name="people-outline" size={14} color="#6B7280" />
+                                                <Text style={styles.occupancyText}>{item.enrolledCount}</Text>
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        {/* Ações da Aula */}
+                                        <View style={styles.classActions}>
+                                            <View style={styles.occupancyStatusRow}>
+                                                <View style={[styles.miniDot, { backgroundColor: item.occupancyStatus === 'Aula Cheia' ? '#EF4444' : '#10B981' }]} />
+                                                <Text style={[styles.occupancyStatusText, { color: item.occupancyStatus === 'Aula Cheia' ? '#EF4444' : '#10B981' }]}>
+                                                    {item.occupancyStatus}
+                                                </Text>
+                                            </View>
+
+                                            {item.attendanceAvailable && (
+                                                <TouchableOpacity
+                                                    style={styles.attendanceButton}
+                                                    onPress={() => {
+                                                        // Abrir tela de chamada ou modal focado
+                                                        navigation.navigate('Presenca', { turmaId: item.turmaId, time: item.time });
+                                                    }}
+                                                >
+                                                    <Ionicons name="checkbox-outline" size={16} color="#fff" />
+                                                    <Text style={styles.attendanceButtonText}>Abrir Chamada</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
                                     </View>
-                                    <TouchableOpacity
-                                        style={styles.classStats}
-                                        onPress={() => setSelectedClassForStudents(item)}
-                                    >
-                                        <Text style={styles.classCount}>{item.enrolledCount || 0} alunos</Text>
-                                        <Text style={[
-                                            styles.classStatus,
-                                            { color: item.status === 'Aula Cheia' ? '#EF4444' : '#10B981' }
-                                        ]}>
-                                            {item.status}
-                                        </Text>
-                                    </TouchableOpacity>
                                 </View>
-                                {index < data.classesToday.length - 1 && <View style={styles.divider} />}
-                            </React.Fragment>
-                        ))
-                    )}
-                </Card>
+                            );
+                        })}
+                    </View>
+                )}
 
                 {/* Modal de Alunos da Aula */}
                 <Modal
@@ -1053,5 +1124,189 @@ const styles = StyleSheet.create({
         width: 46,
         alignItems: 'center',
         justifyContent: 'center'
+    },
+    // TIMELINE STYLES
+    timelineContainer: {
+        paddingHorizontal: 5,
+        marginBottom: 20
+    },
+    timelineItem: {
+        flexDirection: 'row',
+        minHeight: 120
+    },
+    timelineTrack: {
+        width: 40,
+        alignItems: 'center',
+        position: 'relative'
+    },
+    timelineLine: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: 2,
+        backgroundColor: '#E5E7EB'
+    },
+    timelineLineFirst: {
+        top: 25
+    },
+    timelineLineLast: {
+        bottom: '75%'
+    },
+    timelineDot: {
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        marginTop: 25,
+        zIndex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 1
+    },
+    timelineDotInner: {
+        width: 6,
+        height: 6,
+        borderRadius: 3
+    },
+    timelineContent: {
+        flex: 1,
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 16,
+        marginLeft: 4,
+        borderWidth: 1,
+        borderColor: '#F3F4F6',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2
+    },
+    activeClassContent: {
+        borderColor: '#10B98130',
+        backgroundColor: '#F0FDF4'
+    },
+    classHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: 8
+    },
+    timeInfo: {
+        flexDirection: 'row',
+        alignItems: 'baseline'
+    },
+    timelineTime: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#111827',
+        marginRight: 6
+    },
+    durationText: {
+        fontSize: 12,
+        color: '#6B7280',
+        fontWeight: '500'
+    },
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 12
+    },
+    statusBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        marginLeft: 4
+    },
+    classMainInfo: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12
+    },
+    nameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap'
+    },
+    timelineClassName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#374151',
+        marginRight: 8
+    },
+    unitBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+        borderRadius: 4,
+        borderWidth: 0.5
+    },
+    unitBadgeText: {
+        fontSize: 10,
+        fontWeight: 'bold'
+    },
+    timelineTeacherName: {
+        fontSize: 13,
+        color: '#6B7280',
+        marginTop: 2
+    },
+    occupancyInfo: {
+        backgroundColor: '#F9FAFB',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#F3F4F6'
+    },
+    occupancyText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#4B5563',
+        marginLeft: 5
+    },
+    classActions: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderTopWidth: 1,
+        borderTopColor: '#F3F4F6',
+        paddingTop: 12
+    },
+    occupancyStatusRow: {
+        flexDirection: 'row',
+        alignItems: 'center'
+    },
+    miniDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        marginRight: 6
+    },
+    occupancyStatusText: {
+        fontSize: 12,
+        fontWeight: '500'
+    },
+    attendanceButton: {
+        backgroundColor: '#111827',
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8
+    },
+    attendanceButtonText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: 'bold',
+        marginLeft: 6
     }
 });

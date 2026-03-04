@@ -19,6 +19,7 @@ import TurmaCreateScreen from '../screens/TurmaCreateScreen';
 import TeachersScreen from '../screens/TeachersScreen';
 import TeacherCreateScreen from '../screens/TeacherCreateScreen';
 import ActivityTypesScreen from '../screens/ActivityTypesScreen';
+import PresenceScreen from '../screens/PresenceScreen';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 
@@ -221,6 +222,11 @@ export default function AppNavigator() {
                         name="ActivityTypes"
                         component={ActivityTypesScreen}
                         options={{ headerShown: true, title: 'Tipos de Atividade' }}
+                    />
+                    <Stack.Screen
+                        name="Presenca"
+                        component={PresenceScreen}
+                        options={{ headerShown: false }}
                     />
                 </>
             )}

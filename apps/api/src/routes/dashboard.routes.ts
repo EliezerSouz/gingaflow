@@ -2,6 +2,36 @@ import { FastifyInstance } from 'fastify'
 import { prisma } from '../database/prisma'
 import { z } from 'zod'
 
+function calculateClassStatus(startTimeStr: string, durationMinutes: number) {
+    if (!startTimeStr || startTimeStr === '--:--') return { status: 'AGENDADA', attendanceStatus: 'BLOQUEADA' };
+
+    const [hours, minutes] = startTimeStr.split(':').map(Number);
+    const now = new Date();
+
+    // Comparar apenas horas/minutos do dia atual
+    const startTime = new Date();
+    startTime.setHours(hours, minutes, 0, 0);
+
+    const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
+    const attendanceStartTime = new Date(startTime.getTime() - 10 * 60000);
+
+    let status: 'AGENDADA' | 'EM_ANDAMENTO' | 'FINALIZADA' = 'AGENDADA';
+    if (now >= startTime && now <= endTime) {
+        status = 'EM_ANDAMENTO';
+    } else if (now > endTime) {
+        status = 'FINALIZADA';
+    }
+
+    let attendanceStatus: 'BLOQUEADA' | 'DISPONÍVEL' | 'ENCERRADA' = 'BLOQUEADA';
+    if (now >= attendanceStartTime && now <= endTime) {
+        attendanceStatus = 'DISPONÍVEL';
+    } else if (now > endTime) {
+        attendanceStatus = 'ENCERRADA';
+    }
+
+    return { status, attendanceStatus };
+}
+
 export async function registerDashboardRoutes(app: FastifyInstance) {
     app.log.info('📦 Registering Dashboard Routes...')
 
@@ -86,6 +116,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                 const turmasQuery = await prisma.turma.findMany({
                     where: { organizationId: orgId, status: 'ATIVA', ...unitFilter },
                     include: {
+                        unit: true,
                         teacher: true,
                         activityType: true,
                         schedules: {
@@ -148,15 +179,23 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                             ? teacherData.nickname
                             : (teacherData?.full_name || 'Sem Prof.');
 
+                        const { status: classStatus, attendanceStatus } = calculateClassStatus(time, (t as any).durationMinutes || 60);
+
                         classesToday.push({
                             id: `${t.id}-${time}`,
                             turmaId: t.id,
                             name: t.name,
                             time,
+                            durationMinutes: (t as any).durationMinutes || 60,
                             teacher: teacherName,
                             count,
                             enrolledCount: enrolled,
-                            status,
+                            status: classStatus, // Substituindo o status antigo (Vagas Disp) pelo novo status temporal
+                            occupancyStatus: status, // Guardando o status de lotação
+                            attendanceStatus,
+                            attendanceAvailable: attendanceStatus === 'DISPONÍVEL',
+                            unitName: t.unit.name,
+                            unitColor: t.unit.color || '#4F46E5',
                             students: sched.students.map((s: any) => {
                                 const grad = s.currentGraduationId ? gradsMap[s.currentGraduationId] : null;
                                 return {
@@ -193,15 +232,23 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                                     ? teacherData.nickname
                                     : (teacherData?.full_name || 'Sem Prof.');
 
+                                const { status: classStatus, attendanceStatus } = calculateClassStatus(time, (t as any).durationMinutes || 60);
+
                                 classesToday.push({
                                     id: `${t.id}-${time}`,
                                     turmaId: t.id,
                                     name: t.name,
                                     time,
+                                    durationMinutes: (t as any).durationMinutes || 60,
                                     teacher: teacherName,
                                     count,
                                     enrolledCount: enrolled,
-                                    status,
+                                    status: classStatus,
+                                    occupancyStatus: status,
+                                    attendanceStatus,
+                                    attendanceAvailable: attendanceStatus === 'DISPONÍVEL',
+                                    unitName: t.unit.name,
+                                    unitColor: t.unit.color || '#4F46E5',
                                     students: t.studentLinks.map((link: any) => {
                                         const s = link.student;
                                         const grad = s.currentGraduationId ? gradsMap[s.currentGraduationId] : null;

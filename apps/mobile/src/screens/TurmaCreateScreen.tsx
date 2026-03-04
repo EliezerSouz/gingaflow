@@ -47,6 +47,7 @@ export default function TurmaCreateScreen() {
         activityTypeId: '',
         teacherId: '',
         capacity: '20',
+        durationMinutes: '60',
         defaultMonthlyFeeCents: '',
         status: 'ATIVA' as 'ATIVA' | 'INATIVA'
     });
@@ -104,6 +105,7 @@ export default function TurmaCreateScreen() {
                 activityTypeId: turma.activityTypeId || '',
                 teacherId: turma.teacherId || '',
                 capacity: turma.capacity ? turma.capacity.toString() : '20',
+                durationMinutes: turma.durationMinutes ? turma.durationMinutes.toString() : '60',
                 defaultMonthlyFeeCents: turma.defaultMonthlyFeeCents ? (turma.defaultMonthlyFeeCents / 100).toString() : '',
                 status: turma.status || 'ATIVA'
             });
@@ -116,11 +118,11 @@ export default function TurmaCreateScreen() {
                 })));
             } else if (turma.schedule) {
                 // Fallback para migrar string legada
-                const parts = turma.schedule.split(',').map((s: string) => s.trim());
+                const parts = (turma.schedule as string).split(',').map((s: string) => s.trim());
                 const mapped = parts.map((p: string) => ({
                     dayOfWeek: p.split(' ')[0],
                     startTime: p.split(' ')[1] || '00:00'
-                })).filter(s => s.dayOfWeek);
+                })).filter((s: any) => s.dayOfWeek);
                 setSchedules(mapped);
             }
         } catch (error: any) {
@@ -183,6 +185,7 @@ export default function TurmaCreateScreen() {
                 activityTypeId: formData.activityTypeId || null,
                 teacherId: formData.teacherId || null,
                 capacity: parseInt(formData.capacity) || 0,
+                durationMinutes: parseInt(formData.durationMinutes) || 60,
                 schedules: schedules,
                 defaultMonthlyFeeCents: formData.defaultMonthlyFeeCents ? Math.round(parseFloat(formData.defaultMonthlyFeeCents.replace(',', '.')) * 100) : null,
                 status: formData.status
@@ -309,6 +312,15 @@ export default function TurmaCreateScreen() {
                         placeholder="Ex: 20"
                         value={formData.capacity}
                         onChangeText={text => setFormData({ ...formData, capacity: text })}
+                        keyboardType="numeric"
+                    />
+
+                    <Text style={styles.label}>Duração da Aula (Minutos)</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Ex: 60"
+                        value={formData.durationMinutes}
+                        onChangeText={text => setFormData({ ...formData, durationMinutes: text })}
                         keyboardType="numeric"
                     />
 

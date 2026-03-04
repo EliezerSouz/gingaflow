@@ -17,6 +17,7 @@ const TurmaBody = z.object({
   activityTypeId: z.string().uuid().nullable().optional(),
   teacherId: z.string().uuid().nullable().optional(),
   capacity: z.number().int().min(0).optional(),
+  durationMinutes: z.number().int().min(1).optional(),
   schedules: z.array(z.object({
     dayOfWeek: z.enum(['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM']),
     startTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -204,6 +205,7 @@ export async function registerUnitRoutes(app: FastifyInstance) {
         teacherId: rest.teacherId ?? null,
         schedule: rest.schedule ?? null,
         capacity: rest.capacity ?? 0,
+        durationMinutes: rest.durationMinutes ?? 60,
         status: rest.status,
         defaultMonthlyFeeCents: rest.defaultMonthlyFeeCents ?? null,
         defaultPaymentMethod: rest.defaultPaymentMethod ?? null,
@@ -215,7 +217,7 @@ export async function registerUnitRoutes(app: FastifyInstance) {
             teacherId: s.teacherId
           }))
         } : undefined
-      }
+      } as any
     })
 
     if (rest.teacherId) {
@@ -254,10 +256,11 @@ export async function registerUnitRoutes(app: FastifyInstance) {
           teacherId: rest.teacherId !== undefined ? rest.teacherId : undefined,
           schedule: rest.schedule ?? undefined,
           capacity: rest.capacity ?? undefined,
+          durationMinutes: rest.durationMinutes !== undefined ? rest.durationMinutes : undefined,
           status: rest.status,
           defaultMonthlyFeeCents: rest.defaultMonthlyFeeCents ?? undefined,
           defaultPaymentMethod: rest.defaultPaymentMethod ?? undefined,
-        }
+        } as any
       })
 
       // 2. Sincronizar Horários se fornecidos
