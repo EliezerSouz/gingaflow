@@ -13,11 +13,12 @@ import { registerTeacherRoutes } from './routes/teachers.routes'
 import { registerAttendanceRoutes } from './routes/attendance.routes'
 import { registerReportsRoutes } from './routes/reports.routes'
 import { registerActivityTypesRoutes } from './routes/activityTypes.routes'
+import { registerDashboardRoutes } from './routes/dashboard.routes'
 
 const server = Fastify({ logger: true })
 
 // Trigger reload
-await server.register(cors, { origin: true })
+await server.register(cors, { origin: '*' })
 
 // Validar JWT_SECRET obrigatório
 if (!process.env.JWT_SECRET) {
@@ -134,10 +135,30 @@ async function ensureActivityTypes() {
   }
 }
 
+async function ensureUnits() {
+  const org = await prisma.organization.findFirst()
+  if (!org) return
+
+  const unit = await prisma.unit.findFirst({
+    where: { organizationId: org.id }
+  })
+  if (!unit) {
+    await prisma.unit.create({
+      data: {
+        organizationId: org.id,
+        name: 'Matriz',
+        status: 'ATIVA'
+      }
+    })
+    server.log.info('seeded-default-unit')
+  }
+}
+
 // Run seeds
 await ensureUsers()
 await ensureSettings()
 await ensureActivityTypes()
+await ensureUnits()
 
 server.post('/auth/login', async (req, reply) => {
   const parsed = LoginInputSchema.safeParse(req.body)
@@ -202,7 +223,7 @@ server.addHook('onRequest', async (req, reply) => {
   const user = await prisma.user.findUnique({ where: { id: userId } })
 
   if (!user) {
-    return reply.status(404).send({ code: 'NOT_FOUND', message: 'Usuário não encontrado' })
+    return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Usuário não encontrado ou desativado' })
   }
   ; (req as any).currentUser = user
 })
@@ -532,14 +553,15 @@ server.put('/settings', async (req, reply) => {
   }
 })
 
-await registerStudentRoutes(server)
-await registerPaymentRoutes(server)
-await registerGraduationRoutes(server)
-await registerUnitRoutes(server)
-await registerTeacherRoutes(server)
-await registerAttendanceRoutes(server)
-await registerReportsRoutes(server)
-await registerActivityTypesRoutes(server)
+await server.register(registerStudentRoutes)
+await server.register(registerPaymentRoutes)
+await server.register(registerGraduationRoutes)
+await server.register(registerUnitRoutes)
+await server.register(registerTeacherRoutes)
+await server.register(registerAttendanceRoutes)
+await server.register(registerReportsRoutes)
+await server.register(registerActivityTypesRoutes)
+await server.register(registerDashboardRoutes)
 
 server.listen({ port: 5175, host: '0.0.0.0' }).then(addr => {
   server.log.info({ addr }, 'api-started')

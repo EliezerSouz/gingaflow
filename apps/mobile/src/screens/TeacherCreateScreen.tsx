@@ -177,7 +177,13 @@ export default function TeacherCreateScreen() {
             }
         } catch (error: any) {
             console.error('Erro ao salvar professor:', error);
-            Alert.alert('Erro', error.response?.data?.message || 'Não foi possível salvar o professor');
+            if (error.response?.data?.code === 'VALIDATION_ERROR') {
+                const details = error.response.data.details;
+                const messages = details.map((d: any) => `${d.path.join('.')}: ${d.message}`).join('\n');
+                Alert.alert('Erro de Validação', `Por favor, verifique os campos:\n\n${messages}`);
+            } else {
+                Alert.alert('Erro', error.response?.data?.message || 'Não foi possível salvar o professor');
+            }
         } finally {
             setLoading(false);
         }

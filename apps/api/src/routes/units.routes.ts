@@ -4,10 +4,10 @@ import { z } from 'zod'
 
 const UnitBody = z.object({
   name: z.string().min(1),
-  address: z.string().optional(),
-  color: z.string().optional(),
-  defaultMonthlyFeeCents: z.number().int().optional(),
-  defaultPaymentMethod: z.string().optional(),
+  address: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  defaultMonthlyFeeCents: z.number().int().nullable().optional(),
+  defaultPaymentMethod: z.string().nullable().optional(),
   status: z.enum(['ATIVA', 'INATIVA'])
 })
 
@@ -16,9 +16,9 @@ const TurmaBody = z.object({
   unitId: z.string().uuid(),
   activityTypeId: z.string().uuid().nullable().optional(),
   teacherId: z.string().uuid().nullable().optional(),
-  schedule: z.string().optional(),
-  defaultMonthlyFeeCents: z.number().int().optional(),
-  defaultPaymentMethod: z.string().optional(),
+  schedule: z.string().nullable().optional(),
+  defaultMonthlyFeeCents: z.number().int().nullable().optional(),
+  defaultPaymentMethod: z.string().nullable().optional(),
   status: z.enum(['ATIVA', 'INATIVA'])
 })
 

@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
+// DASHBOARD V3 - REAL DATA ONLY
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions, Image } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
@@ -8,15 +9,42 @@ import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SimpleDrawer } from '../components/SimpleDrawer';
 import { useAuth } from '../context/AuthContext';
 
-interface DashboardMetrics {
-    totalStudents: number;
-    activeStudents: number;
-    totalUnits: number;
-    totalTurmas: number;
-    totalTeachers: number;
-    activeTeachers: number;
-    overduePayments: number;
-    upcomingDues: number;
+const { width } = Dimensions.get('window');
+
+interface DashboardData {
+    selectedUnitId: string | null;
+    units: Array<{ id: string; name: string }>;
+    summary: {
+        presences: number;
+        classesCount: number;
+        revenueToday: number;
+        overdueCount: number;
+    };
+    status: {
+        activeStudents: number;
+        activeTeachers: number;
+        unitsCount: number;
+        turmasCount: number;
+    };
+    classesToday: Array<{
+        id: string;
+        name: string;
+        time: string;
+        teacher: string;
+        count: number;
+        enrolledCount: number;
+        status: string;
+    }>;
+    finance: {
+        monthlyRevenue: number;
+        overdueValue: number;
+        ticketAverage: number;
+    };
+    engagement: {
+        popularActivities: Array<{ name: string; count: number }>;
+        topTeachers: Array<{ name: string; count: number }>;
+    };
+    alerts: Array<{ type: 'danger' | 'warning' | 'info'; message: string; icon: string }>;
 }
 
 export default function DashboardScreen() {
@@ -24,471 +52,810 @@ export default function DashboardScreen() {
     const { user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [showDrawer, setShowDrawer] = useState(false);
-    const [metrics, setMetrics] = useState<DashboardMetrics>({
-        totalStudents: 0,
-        activeStudents: 0,
-        totalUnits: 0,
-        totalTurmas: 0,
-        totalTeachers: 0,
-        activeTeachers: 0,
-        overduePayments: 0,
-        upcomingDues: 0
-    });
+    const [error, setError] = useState<string | null>(null);
+    const { signOut } = useAuth();
+    const [data, setData] = useState<DashboardData | null>(null);
+    const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
 
-    async function loadMetrics() {
+    const currentDate = useMemo(() => {
+        const d = new Date();
+        const options: Intl.DateTimeFormatOptions = { weekday: 'long', day: '2-digit', month: 'long' };
+        return d.toLocaleDateString('pt-BR', options);
+    }, []);
+
+    const loadMetrics = useCallback(async (unitId?: string | null) => {
         try {
             setLoading(true);
-
-            // Carregar alunos
-            const studentsRes = await api.get('/students', { params: { per_page: 100 } });
-            const students = studentsRes.data.data || [];
-            const totalStudents = students.length;
-            const activeStudents = students.filter((s: any) => s.status === 'ATIVO').length;
-
-            // Carregar unidades
-            const unitsRes = await api.get('/units');
-            const units = unitsRes.data.data || unitsRes.data || [];
-            const totalUnits = units.length;
-
-            // Carregar turmas de todas as unidades
-            let totalTurmas = 0;
-            for (const unit of units) {
-                try {
-                    const turmasRes = await api.get(`/units/${unit.id}/turmas`);
-                    const turmas = turmasRes.data.data || turmasRes.data || [];
-                    totalTurmas += turmas.length;
-                } catch (e) {
-                    console.log('Erro ao carregar turmas da unidade:', unit.id);
-                }
-            }
-
-            // Carregar professores
-            const teachersRes = await api.get('/teachers');
-            const teachers = teachersRes.data.data || teachersRes.data || [];
-            const totalTeachers = teachers.length;
-            const activeTeachers = teachers.filter((t: any) => t.status === 'ATIVO').length;
-
-            setMetrics({
-                totalStudents,
-                activeStudents,
-                totalUnits,
-                totalTurmas,
-                totalTeachers,
-                activeTeachers,
-                overduePayments: 0,
-                upcomingDues: 0
+            setError(null);
+            const response = await api.get('/dashboard/overview', {
+                params: { unitId: unitId || undefined }
             });
-        } catch (e) {
-            console.log('Erro ao carregar métricas:', e);
+            setData(response.data);
+            console.log('✅ Dashboard Data Loaded:', response.data.summary);
+        } catch (e: any) {
+            console.log('❌ Erro ao carregar dashboard:', e);
+            const msg = e.response?.data?.message || 'Erro de conexão com a API';
+            setError(msg);
+
+            // Se for erro de autenticação, o token pode estar sujo
+            if (e.response?.status === 401 || e.response?.status === 404) {
+                console.log('⚠️ Erro crítico de sessão detectado');
+            }
         } finally {
             setLoading(false);
         }
-    }
+    }, []);
 
     useFocusEffect(
         useCallback(() => {
-            loadMetrics();
-        }, [])
+            loadMetrics(selectedUnitId);
+        }, [loadMetrics, selectedUnitId])
     );
 
-    function UnifiedMetricCard({ icon, title, value, subValue, label, color, onPress }: any) {
-        return (
-            <TouchableOpacity
-                style={styles.unifiedCardWrapper}
-                onPress={onPress}
-                disabled={!onPress}
-                activeOpacity={0.7}
-            >
-                <Card style={styles.metricCard}>
-                    <View style={styles.cardHeader}>
-                        <View style={[styles.iconContainer, { backgroundColor: color + '15' }]}>
-                            <Ionicons name={icon} size={22} color={color} />
-                        </View>
-                        <View style={styles.badgeContainer}>
-                            <Text style={[styles.badgeText, { color: color }]}>{title}</Text>
-                        </View>
-                    </View>
+    // --- Dynamic Components ---
 
-                    <View style={styles.cardBody}>
-                        <Text style={styles.metricValue}>{value}</Text>
-                        {subValue !== undefined && (
-                            <View style={styles.subValueContainer}>
-                                <Text style={styles.subValueLabel}>{label}: </Text>
-                                <Text style={styles.subValueText}>{subValue}</Text>
-                            </View>
-                        )}
-                    </View>
-                </Card>
+    function SectionTitle({ title, subtitle, onPress }: any) {
+        return (
+            <View style={styles.sectionHeader}>
+                <View>
+                    <Text style={styles.sectionTitle}>{title}</Text>
+                    {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+                </View>
+                {onPress && (
+                    <TouchableOpacity onPress={onPress}>
+                        <Text style={styles.sectionLink}>Ver tudo</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        );
+    }
+
+    function StatusCard({ icon, title, value, color }: any) {
+        return (
+            <TouchableOpacity style={styles.statusCard}>
+                <View style={[styles.statusIconBg, { backgroundColor: color + '15' }]}>
+                    <Ionicons name={icon} size={20} color={color} />
+                </View>
+                <View style={styles.statusInfo}>
+                    <Text style={styles.statusValue}>{value}</Text>
+                    <Text style={styles.statusTitle}>{title}</Text>
+                </View>
             </TouchableOpacity>
+        );
+    }
+
+    function InsightItem({ icon, label, value, subLabel, color }: any) {
+        return (
+            <View style={styles.insightItem}>
+                <View style={[styles.insightIcon, { backgroundColor: color + '10' }]}>
+                    <Ionicons name={icon} size={18} color={color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.insightLabel}>{label}</Text>
+                    <Text style={styles.insightSubLabel}>{subLabel}</Text>
+                </View>
+                <Text style={[styles.insightValue, { color: color }]}>{value}</Text>
+            </View>
+        );
+    }
+
+    function AlertItem({ icon, message, type }: any) {
+        const color = type === 'danger' ? '#EF4444' : type === 'warning' ? '#F59E0B' : '#3B82F6';
+        return (
+            <View style={[styles.alertItem, { borderLeftColor: color }]}>
+                <Ionicons name={icon} size={18} color={color} style={{ marginRight: 10 }} />
+                <Text style={styles.alertText}>{message}</Text>
+            </View>
+        );
+    }
+
+    if (!data && (loading || error)) {
+        return (
+            <ScreenContainer>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                    {loading ? (
+                        <>
+                            <ActivityIndicator size="large" color="#4F46E5" />
+                            <Text style={{ marginTop: 10, color: '#6B7280' }}>Carregando Dashboard Real...</Text>
+                        </>
+                    ) : (
+                        <>
+                            <Ionicons name="alert-circle" size={50} color="#EF4444" />
+                            <Text style={{ marginTop: 15, fontSize: 18, fontWeight: 'bold', color: '#111827', textAlign: 'center' }}>
+                                Opa! Algo deu errado
+                            </Text>
+                            <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center', marginBottom: 20 }}>
+                                {error === 'Usuário não encontrado ou desativado'
+                                    ? 'Sua sessão expirou ou o usuário não existe mais no banco.'
+                                    : error}
+                            </Text>
+
+                            <TouchableOpacity
+                                style={{ backgroundColor: '#4F46E5', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, width: '100%', alignItems: 'center', marginBottom: 10 }}
+                                onPress={() => loadMetrics(selectedUnitId)}
+                            >
+                                <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Tentar Novamente</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, width: '100%', alignItems: 'center' }}
+                                onPress={() => signOut()}
+                            >
+                                <Text style={{ color: '#EF4444', fontWeight: '600' }}>Sair e Entrar Novamente</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+                </View>
+            </ScreenContainer>
         );
     }
 
     return (
         <ScreenContainer>
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.greeting}>Olá, {user?.name?.split(' ')[0] || 'Usuário'}!</Text>
-                    <Text style={styles.subtitle}>Bem-vindo ao GingaFlow</Text>
+            {/* 1. HEADER */}
+            <View style={styles.smartHeader}>
+                <View style={styles.headerTop}>
+                    <View>
+                        <Text style={styles.headerGreeting}>GingaFlow Pro 👋</Text>
+                        <Text style={styles.headerDate}>{currentDate}</Text>
+                    </View>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity onPress={() => setShowDrawer(true)} style={styles.avatarButton}>
+                            <View style={styles.avatarPlaceholder}>
+                                <Text style={styles.avatarLetter}>{user?.name?.[0] || 'U'}</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
                 </View>
-                <TouchableOpacity onPress={() => setShowDrawer(true)} style={styles.menuButton}>
-                    <Ionicons name="menu" size={28} color="#111827" />
-                </TouchableOpacity>
+
+                <View style={styles.headerBottom}>
+                    <View style={styles.liveMetrics}>
+                        <View style={styles.liveIndicator} />
+                        <Text style={styles.liveText}>
+                            {selectedUnitId ? 'Visão por Unidade' : 'Visão Global'} - {data?.status.activeStudents || 0} alunos ativos
+                        </Text>
+                    </View>
+                </View>
+            </View>
+
+            {/* 1.5 SELETOR DE UNIDADES (CHIPS) */}
+            <View style={styles.unitFilterContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitChipsScroll}>
+                    <TouchableOpacity
+                        style={[styles.unitChip, !selectedUnitId && styles.unitChipActive]}
+                        onPress={() => setSelectedUnitId(null)}
+                    >
+                        <Text style={[styles.unitChipText, !selectedUnitId && styles.unitChipTextActive]}>Todas</Text>
+                    </TouchableOpacity>
+                    {data?.units.map((unit) => (
+                        <TouchableOpacity
+                            key={unit.id}
+                            style={[styles.unitChip, selectedUnitId === unit.id && styles.unitChipActive]}
+                            onPress={() => setSelectedUnitId(unit.id)}
+                        >
+                            <Text style={[styles.unitChipText, selectedUnitId === unit.id && styles.unitChipTextActive]}>
+                                {unit.name}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
             </View>
 
             <ScrollView
-                contentContainerStyle={styles.content}
-                refreshControl={<RefreshControl refreshing={loading} onRefresh={loadMetrics} />}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={<RefreshControl refreshing={loading} onRefresh={loadMetrics} tintColor="#4F46E5" />}
             >
-                {/* Métricas Principais */}
-                <View style={styles.metricsGrid}>
-                    <UnifiedMetricCard
-                        icon="people"
-                        title="ALUNOS"
-                        value={metrics.activeStudents}
-                        label="Total"
-                        subValue={metrics.totalStudents}
-                        color="#4F46E5"
-                        onPress={() => navigation.navigate('Acadêmico')}
-                    />
+                {/* 2. RESUMO DO DIA */}
+                <Card style={styles.summaryCard}>
+                    <Text style={styles.summaryTitle}>INDICADORES REAIS (HOJE)</Text>
+                    <View style={styles.summaryGrid}>
+                        <View style={styles.summaryItem}>
+                            <Text style={styles.summaryValue}>{data?.summary.presences || 0}</Text>
+                            <Text style={styles.summaryLabel}>Presenças</Text>
+                            <View style={styles.iconCircle}><Ionicons name="people" size={16} color="#FFF" /></View>
+                        </View>
+                        <View style={styles.summaryItem}>
+                            <Text style={styles.summaryValue}>{data?.summary.classesCount || 0}</Text>
+                            <Text style={styles.summaryLabel}>Aulas</Text>
+                            <View style={[styles.iconCircle, { backgroundColor: '#3B82F6' }]}><Ionicons name="book" size={16} color="#FFF" /></View>
+                        </View>
+                        <View style={styles.summaryItem}>
+                            <Text style={[styles.summaryValue, { color: '#059669' }]}>R$ {data?.summary.revenueToday || 0}</Text>
+                            <Text style={styles.summaryLabel}>Receita</Text>
+                            <View style={[styles.iconCircle, { backgroundColor: '#10B981' }]}><Ionicons name="cash" size={16} color="#FFF" /></View>
+                        </View>
+                        <View style={styles.summaryItem}>
+                            <Text style={[styles.summaryValue, { color: '#DC2626' }]}>{data?.summary.overdueCount || 0}</Text>
+                            <Text style={styles.summaryLabel}>Vencidos</Text>
+                            <View style={[styles.iconCircle, { backgroundColor: '#EF4444' }]}><Ionicons name="alert-circle" size={16} color="#FFF" /></View>
+                        </View>
+                    </View>
+                </Card>
 
-                    {user?.role === 'ADMIN' && (
-                        <UnifiedMetricCard
-                            icon="school"
-                            title="PROFESSORES"
-                            value={metrics.activeTeachers}
-                            label="Total"
-                            subValue={metrics.totalTeachers}
+                {/* 3. STATUS */}
+                <SectionTitle title="Status da Academia" />
+                <View style={styles.statusGrid}>
+                    <StatusCard icon="people" title="Alunos" value={data?.status.activeStudents || 0} color="#4F46E5" />
+                    <StatusCard icon="school" title="Profs" value={data?.status.activeTeachers || 0} color="#8B5CF6" />
+                    <StatusCard icon="business" title="Unidades" value={data?.status.unitsCount || 0} color="#EF4444" />
+                    <StatusCard icon="calendar" title="Turmas" value={data?.status.turmasCount || 0} color="#3B82F6" />
+                </View>
+
+                {/* 4. AULAS DE HOJE */}
+                <SectionTitle title="Aulas de Hoje" subtitle="Dados dinâmicos do banco" />
+                <Card style={styles.classesCard}>
+                    {!data?.classesToday || data.classesToday.length === 0 ? (
+                        <View style={{ padding: 40, alignItems: 'center' }}>
+                            <Ionicons name="calendar-outline" size={32} color="#D1D5DB" />
+                            <Text style={{ color: '#9CA3AF', marginTop: 10 }}>Nenhuma aula para hoje</Text>
+                        </View>
+                    ) : (
+                        data.classesToday.map((item, index) => (
+                            <React.Fragment key={item.id}>
+                                <View style={styles.classItem}>
+                                    <View style={styles.classTime}>
+                                        <Text style={styles.timeLabel}>{item.time}</Text>
+                                        <View style={[styles.statusDot, { backgroundColor: item.count > 0 ? '#10B981' : '#F59E0B' }]} />
+                                    </View>
+                                    <View style={styles.classInfo}>
+                                        <Text style={styles.className}>{item.name}</Text>
+                                        <Text style={styles.teacherName}>{item.teacher}</Text>
+                                    </View>
+                                    <View style={styles.classStats}>
+                                        <Text style={styles.classCount}>{item.enrolledCount || 0} alunos</Text>
+                                        <Text style={[
+                                            styles.classStatus,
+                                            { color: item.status === 'Aula Cheia' ? '#EF4444' : '#10B981' }
+                                        ]}>
+                                            {item.status}
+                                        </Text>
+                                    </View>
+                                </View>
+                                {index < data.classesToday.length - 1 && <View style={styles.divider} />}
+                            </React.Fragment>
+                        ))
+                    )}
+                </Card>
+
+                {/* 5. FINANCEIRO */}
+                <SectionTitle title="Performance Financeira" />
+                <View style={styles.financeGrid}>
+                    <Card style={styles.financeSmallCard}>
+                        <Text style={styles.financeLabel}>Faturamento (Mês)</Text>
+                        <Text style={styles.financeValue}>R$ {(data?.finance?.monthlyRevenue || 0).toLocaleString('pt-BR')}</Text>
+                        <View style={styles.trendBadge}>
+                            <Ionicons name="trending-up" size={12} color="#059669" />
+                            <Text style={styles.financeTrend}>Ticket Médio: R$ {data?.finance?.ticketAverage || 0}</Text>
+                        </View>
+                    </Card>
+                    <Card style={[styles.financeSmallCard, { backgroundColor: '#FEF2F2' }]}>
+                        <Text style={styles.financeLabel}>Inadimplência</Text>
+                        <Text style={[styles.financeValue, { color: '#EF4444' }]}>R$ {(data?.finance?.overdueValue || 0).toLocaleString('pt-BR')}</Text>
+                        <Text style={styles.financeSubLabel}>{data?.summary.overdueCount} faturas pendentes</Text>
+                    </Card>
+                </View>
+
+                {/* 6. ENGAJAMENTO */}
+                <SectionTitle title="Engajamento & Popularidade" />
+                <Card style={styles.engagementCard}>
+                    <Text style={styles.engagementSubTitle}>ATIVIDADES MAIS PROCURADAS</Text>
+                    {data?.engagement.popularActivities.map((act, idx) => (
+                        <InsightItem
+                            key={idx}
+                            icon="flash"
+                            label={act.name}
+                            subLabel="Matriculados"
+                            value={act.count}
                             color="#8B5CF6"
-                            onPress={() => navigation.navigate('Teachers')}
                         />
+                    ))}
+
+                    <View style={[styles.divider, { marginVertical: 15 }]} />
+
+                    <Text style={styles.engagementSubTitle}>TOP PROFESSORES (ALUNOS)</Text>
+                    {data?.engagement.topTeachers.map((teacher, idx) => (
+                        <InsightItem
+                            key={idx}
+                            icon="star"
+                            label={teacher.name}
+                            subLabel="Total de alunos"
+                            value={teacher.count}
+                            color="#F59E0B"
+                        />
+                    ))}
+                </Card>
+
+                {/* 7. ALERTAS */}
+                <SectionTitle title="Notificações e Alertas" />
+                <View style={styles.alertsContainer}>
+                    {data?.alerts.length === 0 ? (
+                        <View style={styles.noAlerts}>
+                            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                            <Text style={styles.noAlertsText}>Tudo em ordem no momento!</Text>
+                        </View>
+                    ) : (
+                        data?.alerts.map((alert, i) => (
+                            <AlertItem key={i} icon={alert.icon} message={alert.message} type={alert.type} />
+                        ))
                     )}
                 </View>
 
-                {/* Métricas Secundárias */}
-                <View style={styles.secondaryGrid}>
-                    {user?.role === 'ADMIN' && (
-                        <>
-                            <TouchableOpacity
-                                style={styles.miniCard}
-                                onPress={() => navigation.navigate('Units')}
-                            >
-                                <Ionicons name="business" size={18} color="#EF4444" />
-                                <View style={styles.miniCardContent}>
-                                    <Text style={styles.miniCardValue}>{metrics.totalUnits}</Text>
-                                    <Text style={styles.miniCardLabel}>Unidades</Text>
-                                </View>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={styles.miniCard}
-                                onPress={() => navigation.navigate('Turmas')}
-                            >
-                                <Ionicons name="people-circle" size={18} color="#3B82F6" />
-                                <View style={styles.miniCardContent}>
-                                    <Text style={styles.miniCardValue}>{metrics.totalTurmas}</Text>
-                                    <Text style={styles.miniCardLabel}>Turmas</Text>
-                                </View>
-                            </TouchableOpacity>
-                        </>
-                    )}
-                </View>
-
-                {/* Financeiro */}
-                <View style={styles.financeRow}>
-                    <TouchableOpacity style={[styles.financeCard, { borderLeftColor: '#EF4444' }]}>
-                        <Text style={styles.financeLabel}>Inadimplentes</Text>
-                        <Text style={[styles.financeValue, { color: '#EF4444' }]}>{metrics.overduePayments}</Text>
+                {/* 8. AÇÕES RÁPIDAS */}
+                <SectionTitle title="Menu de Operações" />
+                <View style={styles.quickActionsGrid}>
+                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Acadêmico')}>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#E0E7FF' }]}><Ionicons name="person-add" size={24} color="#4F46E5" /></View>
+                        <Text style={styles.qaLabel}>Novo Aluno</Text>
                     </TouchableOpacity>
-
-                    <TouchableOpacity style={[styles.financeCard, { borderLeftColor: '#F59E0B' }]}>
-                        <Text style={styles.financeLabel}>A vencer</Text>
-                        <Text style={[styles.financeValue, { color: '#F59E0B' }]}>{metrics.upcomingDues}</Text>
+                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Agenda')}>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#DBEAFE' }]}><Ionicons name="calendar" size={24} color="#3B82F6" /></View>
+                        <Text style={styles.qaLabel}>Chamada</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Graduações')}>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#D1FAE5' }]}><Ionicons name="ribbon" size={24} color="#10B981" /></View>
+                        <Text style={styles.qaLabel}>Graduações</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Units')}>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#FEE2E2' }]}><Ionicons name="business" size={24} color="#EF4444" /></View>
+                        <Text style={styles.qaLabel}>Unidades</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Turmas')}>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#FEF3C7' }]}><Ionicons name="people" size={24} color="#F59E0B" /></View>
+                        <Text style={styles.qaLabel}>Turmas</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Teachers')}>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#E0E7FF' }]}><Ionicons name="school" size={24} color="#6366F1" /></View>
+                        <Text style={styles.qaLabel}>Professores</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('ActivityTypes')}>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#F3E8FF' }]}><Ionicons name="construct" size={24} color="#8B5CF6" /></View>
+                        <Text style={styles.qaLabel}>Atividades</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Finance')}>
+                        <View style={[styles.qaIconBg, { backgroundColor: '#F1F5F9' }]}><Ionicons name="card" size={24} color="#475569" /></View>
+                        <Text style={styles.qaLabel}>Pagamentos</Text>
                     </TouchableOpacity>
                 </View>
 
-                {/* Próximas Aulas */}
-                <Card style={styles.sectionCard}>
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Próximas Aulas</Text>
-                        <TouchableOpacity onPress={() => navigation.navigate('Agenda')}>
-                            <Text style={styles.sectionLink}>Ver todas</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <Text style={styles.placeholder}>Carregando agenda...</Text>
-                </Card>
-
-                {/* Ações Rápidas */}
-                <Card style={styles.sectionCard}>
-                    <Text style={styles.sectionTitle}>Ações Rápidas</Text>
-                    <View style={styles.quickActions}>
-                        <TouchableOpacity
-                            style={styles.quickAction}
-                            onPress={() => navigation.navigate('Acadêmico')}
-                        >
-                            <View style={[styles.quickActionIcon, { backgroundColor: '#E0E7FF' }]}>
-                                <Ionicons name="person-add" size={20} color="#4F46E5" />
-                            </View>
-                            <Text style={styles.quickActionText}>Novo Aluno</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.quickAction}
-                            onPress={() => navigation.navigate('Agenda')}
-                        >
-                            <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                                <Ionicons name="calendar" size={20} color="#3B82F6" />
-                            </View>
-                            <Text style={styles.quickActionText}>Chamada</Text>
-                        </TouchableOpacity>
-
-                        {user?.role === 'ADMIN' && (
-                            <>
-                                <TouchableOpacity
-                                    style={styles.quickAction}
-                                    onPress={() => navigation.navigate('Graduações')}
-                                >
-                                    <View style={[styles.quickActionIcon, { backgroundColor: '#D1FAE5' }]}>
-                                        <Ionicons name="ribbon" size={20} color="#10B981" />
-                                    </View>
-                                    <Text style={styles.quickActionText}>Graduações</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.quickAction}
-                                    onPress={() => navigation.navigate('Units')}
-                                >
-                                    <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                                        <Ionicons name="business" size={20} color="#EF4444" />
-                                    </View>
-                                    <Text style={styles.quickActionText}>Unidades</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.quickAction}
-                                    onPress={() => navigation.navigate('Turmas')}
-                                >
-                                    <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                                        <Ionicons name="people-circle" size={20} color="#3B82F6" />
-                                    </View>
-                                    <Text style={styles.quickActionText}>Turmas</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.quickAction}
-                                    onPress={() => navigation.navigate('Teachers')}
-                                >
-                                    <View style={[styles.quickActionIcon, { backgroundColor: '#E0E7FF' }]}>
-                                        <Ionicons name="school" size={20} color="#6366F1" />
-                                    </View>
-                                    <Text style={styles.quickActionText}>Professores</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.quickAction}
-                                    onPress={() => navigation.navigate('ActivityTypes')}
-                                >
-                                    <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
-                                        <Ionicons name="construct" size={20} color="#8B5CF6" />
-                                    </View>
-                                    <Text style={styles.quickActionText}>Atividades</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.quickAction}
-                                >
-                                    <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                                        <Ionicons name="cash" size={20} color="#F59E0B" />
-                                    </View>
-                                    <Text style={styles.quickActionText}>Pagamentos</Text>
-                                </TouchableOpacity>
-                            </>
-                        )}
-                    </View>
-                </Card>
+                <View style={{ height: 100 }} />
             </ScrollView>
+
             <SimpleDrawer visible={showDrawer} onClose={() => setShowDrawer(false)} />
         </ScreenContainer>
     );
 }
 
 const styles = StyleSheet.create({
-    header: {
+    smartHeader: {
+        backgroundColor: '#FFF',
+        paddingHorizontal: 20,
+        paddingTop: 15,
+        paddingBottom: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+    },
+    headerTop: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 16,
-        backgroundColor: '#FFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB'
+        marginBottom: 15
     },
-    greeting: { fontSize: 26, fontWeight: 'bold', color: '#111827' },
-    subtitle: { fontSize: 13, color: '#6B7280', marginTop: 2, fontWeight: '500' },
-    menuButton: {
-        padding: 10,
-        backgroundColor: '#F3F4F6',
+    headerGreeting: {
+        fontSize: 22,
+        fontWeight: '800',
+        color: '#111827',
+    },
+    headerDate: {
+        fontSize: 14,
+        color: '#6B7280',
+        textTransform: 'capitalize'
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    avatarPlaceholder: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: '#4F46E5',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    avatarLetter: {
+        color: '#FFF',
+        fontSize: 18,
+        fontWeight: 'bold'
+    },
+    headerBottom: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+    },
+    unitSelector: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: '#EEF2FF',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
         borderRadius: 12
     },
-    content: { padding: 16, paddingBottom: 40 },
-
-    // Unified Metrics
-    metricsGrid: {
+    unitName: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#4F46E5'
+    },
+    liveMetrics: {
         flexDirection: 'row',
-        gap: 12,
-        marginBottom: 12
+        alignItems: 'center',
+        gap: 6
     },
-    unifiedCardWrapper: {
+    liveIndicator: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#10B981'
+    },
+    liveText: {
+        fontSize: 12,
+        color: '#6B7280',
+        fontWeight: '600'
+    },
+    scrollContent: {
+        padding: 20
+    },
+    summaryCard: {
+        backgroundColor: '#4F46E5',
+        borderRadius: 24,
+        padding: 20,
+        marginBottom: 25,
+    },
+    summaryTitle: {
+        fontSize: 11,
+        fontWeight: 'bold',
+        color: 'rgba(255,255,255,0.7)',
+        letterSpacing: 1,
+        marginBottom: 20
+    },
+    summaryGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12
+    },
+    summaryItem: {
         flex: 1,
+        minWidth: '45%',
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        padding: 15,
+        borderRadius: 18,
     },
-    metricCard: {
-        padding: 16,
-        borderRadius: 20,
+    summaryValue: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#FFF',
     },
-    cardHeader: {
+    summaryLabel: {
+        fontSize: 10,
+        color: 'rgba(255,255,255,0.9)',
+        fontWeight: '600',
+        marginTop: 2
+    },
+    iconCircle: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    sectionHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'flex-end',
+        marginBottom: 15,
+        marginTop: 5
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#111827',
+    },
+    sectionSubtitle: {
+        fontSize: 12,
+        color: '#9CA3AF',
+    },
+    sectionLink: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#4F46E5'
+    },
+    statusGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+        marginBottom: 25
+    },
+    statusCard: {
+        flex: 1,
+        minWidth: '45%',
+        backgroundColor: '#FFF',
+        borderRadius: 20,
+        padding: 16,
+        flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 12
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
     },
-    badgeContainer: {
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 6,
-        backgroundColor: '#F9FAFB'
-    },
-    badgeText: {
-        fontSize: 10,
-        fontWeight: 'bold',
-        letterSpacing: 0.5
-    },
-    iconContainer: {
+    statusIconBg: {
         width: 40,
         height: 40,
         borderRadius: 12,
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        marginRight: 12
     },
-    cardBody: {
-        alignItems: 'flex-start'
-    },
-    metricValue: {
-        fontSize: 32,
-        fontWeight: '800',
-        color: '#111827',
-        lineHeight: 36
-    },
-    subValueContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 4
-    },
-    subValueLabel: {
-        fontSize: 12,
-        color: '#9CA3AF'
-    },
-    subValueText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#6B7280'
-    },
-
-    // Secondary Grid
-    secondaryGrid: {
-        flexDirection: 'row',
-        gap: 12,
-        marginBottom: 16
-    },
-    miniCard: {
-        flex: 1,
-        backgroundColor: '#FFF',
-        borderRadius: 16,
-        padding: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        borderWidth: 1,
-        borderColor: '#F3F4F6'
-    },
-    miniCardContent: {
+    statusInfo: {
         flex: 1
     },
-    miniCardValue: {
-        fontSize: 16,
-        fontWeight: 'bold',
+    statusValue: {
+        fontSize: 20,
+        fontWeight: '800',
         color: '#111827'
     },
-    miniCardLabel: {
-        fontSize: 11,
-        color: '#6B7280'
+    statusTitle: {
+        fontSize: 10,
+        color: '#9CA3AF',
+        fontWeight: '700',
+        textTransform: 'uppercase'
     },
-
-    // Finance Row
-    financeRow: {
+    classesCard: {
+        borderRadius: 24,
+        padding: 0,
+        marginBottom: 25,
+        overflow: 'hidden'
+    },
+    classItem: {
         flexDirection: 'row',
-        gap: 12,
-        marginBottom: 20
+        alignItems: 'center',
+        padding: 18,
     },
-    financeCard: {
-        flex: 1,
-        backgroundColor: '#FFF',
-        padding: 12,
-        borderRadius: 12,
-        borderLeftWidth: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2
+    classTime: {
+        alignItems: 'center',
+        width: 50,
+        marginRight: 15
     },
-    financeLabel: {
-        fontSize: 11,
+    timeLabel: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#111827'
+    },
+    statusDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginTop: 5
+    },
+    classInfo: {
+        flex: 1
+    },
+    className: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#111827'
+    },
+    teacherName: {
+        fontSize: 12,
         color: '#6B7280',
-        fontWeight: '600',
-        marginBottom: 2
     },
-    financeValue: {
+    classStats: {
+        alignItems: 'flex-end'
+    },
+    classCount: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#4B5563'
+    },
+    classStatus: {
+        fontSize: 11,
+        fontWeight: 'bold',
+    },
+    divider: {
+        height: 1,
+        backgroundColor: '#F3F4F6',
+        marginHorizontal: 18
+    },
+    insightItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        gap: 15
+    },
+    insightIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    insightLabel: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#374151'
+    },
+    insightSubLabel: {
+        fontSize: 11,
+        color: '#9CA3AF'
+    },
+    insightValue: {
         fontSize: 18,
         fontWeight: '800'
     },
-
-    sectionCard: {
-        marginBottom: 20,
-        borderRadius: 20,
-        padding: 16
+    financeGrid: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 25
     },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
-    sectionLink: { fontSize: 14, color: '#4F46E5', fontWeight: '700' },
-    placeholder: { fontSize: 14, color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center', marginVertical: 20 },
-
-    quickActions: {
+    financeSmallCard: {
+        flex: 1,
+        borderRadius: 20,
+        padding: 16,
+    },
+    financeLabel: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#6B7280',
+        marginBottom: 10
+    },
+    financeValue: {
+        fontSize: 22,
+        fontWeight: '900',
+        color: '#111827',
+    },
+    financeTrend: {
+        fontSize: 10,
+        color: '#059669',
+        fontWeight: 'bold',
+        marginTop: 5
+    },
+    alertsContainer: {
+        gap: 10,
+        marginBottom: 25
+    },
+    alertItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFF',
+        padding: 15,
+        borderRadius: 16,
+        borderLeftWidth: 5,
+    },
+    alertText: {
+        fontSize: 14,
+        color: '#374151',
+        fontWeight: '600',
+        flex: 1
+    },
+    quickActionsGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
-        marginTop: 8
+        paddingHorizontal: 0,
+        marginBottom: 20
     },
-    quickAction: {
+    qaButton: {
+        width: (width - 52) / 2,
+        backgroundColor: '#FFF',
+        borderRadius: 24,
+        paddingVertical: 20,
+        paddingHorizontal: 15,
         alignItems: 'center',
-        width: '23%',
-        marginBottom: 16
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 10
     },
-    quickActionIcon: {
-        width: 52,
-        height: 52,
-        borderRadius: 16,
+    qaIconBg: {
+        width: 54,
+        height: 54,
+        borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3
+        marginBottom: 12
     },
-    quickActionText: {
+    qaLabel: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#1F2937',
+        textAlign: 'center'
+    },
+    engagementCard: {
+        borderRadius: 24,
+        padding: 20,
+        marginBottom: 25
+    },
+    engagementSubTitle: {
         fontSize: 10,
-        color: '#4B5563',
-        textAlign: 'center',
-        fontWeight: '600'
+        fontWeight: '900',
+        color: '#9CA3AF',
+        letterSpacing: 1.5,
+        marginBottom: 15,
+        marginTop: 5
+    },
+    trendBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: '#E1FCEF',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        alignSelf: 'flex-start',
+        marginTop: 8
+    },
+    financeSubLabel: {
+        fontSize: 11,
+        color: '#9CA3AF',
+        marginTop: 8,
+        fontWeight: '500'
+    },
+    noAlerts: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: '#F0FDF4',
+        padding: 20,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#DCFCE7'
+    },
+    noAlertsText: {
+        color: '#166534',
+        fontWeight: '600',
+        fontSize: 14
+    },
+    avatarButton: {
+        elevation: 4,
+        shadowColor: '#4F46E5',
+        shadowOpacity: 0.3,
+        shadowRadius: 8
+    },
+    unitFilterContainer: {
+        backgroundColor: '#FFF',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6'
+    },
+    unitChipsScroll: {
+        paddingHorizontal: 20,
+        gap: 10
+    },
+    unitChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: '#F3F4F6',
+        borderWidth: 1,
+        borderColor: '#E5E7EB'
+    },
+    unitChipActive: {
+        backgroundColor: '#4F46E5',
+        borderColor: '#4F46E5'
+    },
+    unitChipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#6B7280'
+    },
+    unitChipTextActive: {
+        color: '#FFF'
     }
 });

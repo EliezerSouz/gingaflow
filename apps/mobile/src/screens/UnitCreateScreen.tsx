@@ -102,7 +102,14 @@ export default function UnitCreateScreen() {
             }
         } catch (error: any) {
             console.error('Erro ao salvar unidade:', error);
-            Alert.alert('Erro', error.response?.data?.message || 'Não foi possível salvar a unidade');
+
+            if (error.response?.data?.code === 'VALIDATION_ERROR') {
+                const details = error.response.data.details;
+                const messages = details.map((d: any) => `${d.path.join('.')}: ${d.message}`).join('\n');
+                Alert.alert('Erro de Validação', `Por favor, verifique os campos:\n\n${messages}`);
+            } else {
+                Alert.alert('Erro', error.response?.data?.message || 'Não foi possível salvar a unidade');
+            }
         } finally {
             setLoading(false);
         }

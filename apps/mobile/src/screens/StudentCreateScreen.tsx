@@ -71,7 +71,14 @@ export default function StudentCreateScreen() {
             Alert.alert('Sucesso', 'Aluno cadastrado!');
             navigation.goBack();
         } catch (e: any) {
-            Alert.alert('Erro', e.response?.data?.message || 'Falha ao cadastrar');
+            console.error('Erro ao cadastrar aluno:', e);
+            if (e.response?.data?.code === 'VALIDATION_ERROR') {
+                const details = e.response.data.details;
+                const messages = details.map((d: any) => `${d.path.join('.')}: ${d.message}`).join('\n');
+                Alert.alert('Erro de Validação', `Por favor, verifique os campos:\n\n${messages}`);
+            } else {
+                Alert.alert('Erro', e.response?.data?.message || 'Falha ao cadastrar');
+            }
         } finally {
             setSaving(false);
         }

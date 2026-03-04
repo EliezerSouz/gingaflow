@@ -6,6 +6,7 @@ const AttendanceRecordSchema = z.object({
   studentId: z.string().uuid(),
   turmaId: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  time: z.string().optional().nullable(),
   status: z.enum(['PRESENT', 'ABSENT', 'JUSTIFIED']),
   notes: z.string().optional()
 })
@@ -20,7 +21,8 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
 
     const query = z.object({
       turmaId: z.string().uuid(),
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      time: z.string().optional().nullable()
     }).parse((req as any).query)
 
     try {
@@ -28,6 +30,7 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
         where: {
           turmaId: query.turmaId,
           date: query.date,
+          time: query.time,
           organizationId: user.organizationId
         }
       })
@@ -95,6 +98,7 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
           studentId: body.studentId,
           turmaId: body.turmaId,
           date: body.date,
+          time: body.time,
           organizationId: user.organizationId
         }
       })
@@ -121,6 +125,7 @@ export async function registerAttendanceRoutes(app: FastifyInstance) {
             studentId: body.studentId,
             turmaId: body.turmaId,
             date: body.date,
+            time: body.time,
             status: body.status,
             notes: body.notes
           }

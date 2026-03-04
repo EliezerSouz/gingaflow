@@ -9,14 +9,14 @@ const getApiUrl = () => {
         return process.env.EXPO_PUBLIC_API_URL;
     }
 
-    // 2. Fallback to production/custom URL if defined
-    // 3. Auto-detect local development
+    // 2. Auto-detect local development if env is not defined
     if (__DEV__) {
-        // Enulador Android
+        // Enulador Android official uses 10.0.2.2
+        // Genymotion uses 10.0.3.2 
+        // Physical device uses computer IP
         if (Platform.OS === 'android') {
             return 'http://10.0.2.2:5175';
         }
-        // iOS/Web
         return 'http://localhost:5175';
     }
 
