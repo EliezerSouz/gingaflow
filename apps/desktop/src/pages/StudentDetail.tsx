@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Card, Tabs, TabsList, TabsTrigger, TabsContent, EmptyState, FormField, Input, Badge, Button, Icon, Dropdown, type IconName } from '@gingaflow/ui'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getStudent, parseStudentExtra, Student, getGraduations, updateStudent } from '../services/students'
+import { studentRepository } from '../repositories/studentRepository'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import { CordaType, Graduation as GradConfig } from '../services/settings'
@@ -29,13 +30,12 @@ export default function StudentDetail() {
   async function loadStudent(studentId: string) {
     try {
       setLoading(true)
-      const [studentRes, historyRes] = await Promise.all([
-        getStudent(studentId),
+      const [studentData, historyRes] = await Promise.all([
+        studentRepository.getById(studentId),
         getGraduations(studentId)
       ])
       
-      const data = (studentRes as any).data || studentRes
-      setStudent(data)
+      setStudent(studentData)
       setHistory(historyRes.data || [])
     } catch (e) {
       console.error('Erro ao carregar aluno', e)
@@ -161,41 +161,46 @@ export default function StudentDetail() {
         <TabsContent value="graduacoes" current={tab}>
           <div className="space-y-4">
             
-            {extra.graduation && (
-              <Card className="relative overflow-hidden p-8 flex flex-col items-center justify-center min-h-[200px] border-none shadow-none bg-transparent">
-                {/* Background Corda */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-90 scale-150 transform">
-                  {(() => {
-                    const grad = settings.graduations?.find(g => g.name === extra.graduation)
-                    return <CordaPreview grad={grad || { color: '#9CA3AF' }} width={800} height={100} />
-                  })()}
-                </div>
-
-                {/* Content Overlay */}
-                <div className="relative z-10 text-center p-6 max-w-md w-full">
-                  <div className="text-sm font-medium text-gray-500 mb-2 uppercase tracking-wide drop-shadow-sm">Graduação Atual</div>
-                  {(() => {
-                    const grad = settings.graduations?.find(g => g.name === extra.graduation)
-                    const desc = grad?.description 
-                      || [grad?.category, (typeof grad?.grau === 'number' ? `Grau ${grad.grau}` : undefined)]
-                        .filter(Boolean).join(' • ')
-                    return (
-                      <>
-                        <div className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{grad?.name || extra.graduation}</div>
-                        {desc && <div className="text-lg font-medium text-brand-600">{desc}</div>}
-                      </>
-                    )
-                  })()}
-                </div>
-              </Card>
-            )}
+            {/* Current graduation — resolved from currentGraduationId UUID via settings */}
+            {(() => {
+              // Try match by UUID first (currentGraduationId), then by name fallback
+              const currentGradId = (student as any).currentGraduationId
+              const gradByName = extra.graduation
+                ? settings.graduations?.find(g => g.name === extra.graduation)
+                : undefined
+              const gradById = currentGradId
+                ? settings.graduations?.find(g => (g as any).id === currentGradId)
+                : undefined
+              const grad = gradById || gradByName
+              const displayName = grad?.name || extra.graduation || ''
+              if (!displayName) return null
+              const desc = grad?.description
+                || [grad?.category, (typeof grad?.grau === 'number' ? `Grau ${grad.grau}` : undefined)]
+                  .filter(Boolean).join(' • ')
+              return (
+                <Card className="relative overflow-hidden p-8 flex flex-col items-center justify-center min-h-[200px] border-none shadow-none bg-transparent">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-90 scale-150 transform">
+                    <CordaPreview grad={grad || { color: '#9CA3AF' }} width={800} height={100} />
+                  </div>
+                  <div className="relative z-10 text-center p-6 max-w-md w-full">
+                    <div className="text-sm font-medium text-gray-500 mb-2 uppercase tracking-wide drop-shadow-sm">Graduação Atual</div>
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{displayName}</div>
+                    {desc && <div className="text-lg font-medium text-brand-600">{desc}</div>}
+                  </div>
+                </Card>
+              )
+            })()}
             
             {history.length > 0 ? (
               <Card>
                 <div className="text-sm font-medium mb-4">Histórico de Graduações</div>
                 <div className="space-y-4">
                   {history.map((h, i) => {
-                    const gradConfig = settings.graduations?.find(g => g.name === h.newGraduationId)
+                    // h.newGraduationLevel is resolved by the API via GraduationLevel lookup
+                    const gradName = h.newGraduationLevel?.name || h.newGraduationId || ''
+                    const gradConfig = settings.graduations?.find(g =>
+                      g.name === gradName || (g as any).id === h.newGraduationId
+                    )
                     return (
                         <div key={h.id} className="flex flex-col gap-2 p-3 rounded bg-gray-50 border border-gray-100">
                             <div className="flex items-center justify-between">
@@ -204,7 +209,7 @@ export default function StudentDetail() {
                                         <CordaPreview grad={gradConfig || { color: '#9CA3AF' }} width={60} height={15} />
                                     </div>
                                     <div>
-                                        <div className="font-semibold text-gray-900 text-sm">{gradConfig?.name || h.newGraduationId}</div>
+                                        <div className="font-semibold text-gray-900 text-sm">{gradConfig?.name || gradName}</div>
                                         <div className="text-xs text-gray-500 flex items-center gap-1">
                                             <span>{h.type === 'PROMOTION' ? 'Promoção' : h.type === 'ADJUSTMENT' ? 'Ajuste' : 'Correção'}</span>
                                             {h.teacher && (

@@ -14,6 +14,7 @@
   "dependencies": {
     "@gingaflow/shared": "workspace:*",
     "@gingaflow/ui": "workspace:*",
+    "tauri-plugin-sql-api": "git+https://github.com/tauri-apps/tauri-plugin-sql#v1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.3",

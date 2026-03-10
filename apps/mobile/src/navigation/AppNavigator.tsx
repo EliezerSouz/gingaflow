@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, Dimensions } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import React, { useState, createContext, useContext } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Pressable, Dimensions } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createDrawerNavigator, DrawerContentScrollView } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import AcademicScreen from '../screens/AcademicScreen';
@@ -20,13 +20,102 @@ import TeachersScreen from '../screens/TeachersScreen';
 import TeacherCreateScreen from '../screens/TeacherCreateScreen';
 import ActivityTypesScreen from '../screens/ActivityTypesScreen';
 import PresenceScreen from '../screens/PresenceScreen';
+import FinancialScreen from '../screens/FinancialScreen';
+import ReportsScreen from '../screens/ReportsScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 
+const { width } = Dimensions.get('window');
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const Drawer = createDrawerNavigator();
 
-// --- Action Menu Component ---
+// --- Drawer Context (Maintained for legacy screen calls, but now uses native drawer) ---
+export const DrawerContext = createContext<{ openDrawer: () => void }>({ openDrawer: () => { } });
+export const useDrawer = () => useContext(DrawerContext);
+
+// --- Custom Drawer Content ---
+function CustomDrawerContent(props: any) {
+    const { navigation } = props;
+
+    const menuSections = [
+        {
+            title: 'Principal',
+            items: [
+                { label: 'Dashboard', icon: 'grid', route: 'Dashboard' },
+            ]
+        },
+        {
+            title: 'Acadêmico',
+            items: [
+                { label: 'Alunos', icon: 'people', route: 'Acadêmico' },
+                { label: 'Turmas', icon: 'layers', route: 'Turmas' },
+                { label: 'Professores', icon: 'person', route: 'Teachers' },
+                { label: 'Graduações', icon: 'ribbon', route: 'Graduações' },
+            ]
+        },
+        {
+            title: 'Operacional',
+            items: [
+                { label: 'Agenda', icon: 'calendar', route: 'Agenda' },
+                { label: 'Unidades', icon: 'business', route: 'Units' },
+            ]
+        },
+        {
+            title: 'Gestão',
+            items: [
+                { label: 'Financeiro', icon: 'cash', route: 'Financial' },
+                { label: 'Relatórios', icon: 'stats-chart', route: 'Reports' },
+            ]
+        },
+        {
+            title: 'Sistema',
+            items: [
+                { label: 'Configurações', icon: 'settings', route: 'Settings' },
+            ]
+        }
+    ];
+
+    const navigate = (route: string) => {
+        navigation.navigate(route);
+    };
+
+    return (
+        <View style={{ flex: 1, backgroundColor: '#FFF' }}>
+            <View style={styles.drawerHeader}>
+                <Text style={styles.drawerBrand}>GingaFlow</Text>
+                <Text style={styles.drawerVersion}>v1.0.0</Text>
+            </View>
+            <DrawerContentScrollView {...props} showsVerticalScrollIndicator={false}>
+                {menuSections.map((section, idx) => (
+                    <View key={idx} style={styles.drawerSection}>
+                        <Text style={styles.sectionTitle}>{section.title}</Text>
+                        {section.items.map((item, itemIdx) => (
+                            <TouchableOpacity
+                                key={itemIdx}
+                                style={styles.drawerItem}
+                                onPress={() => navigate(item.route)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.drawerIconContainer}>
+                                    <Ionicons name={item.icon as any} size={20} color="#4F46E5" />
+                                </View>
+                                <Text style={styles.drawerLabel}>{item.label}</Text>
+                                <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                ))}
+            </DrawerContentScrollView>
+            <View style={styles.drawerFooter}>
+                <Text style={styles.footerText}>Capoeira Management System</Text>
+            </View>
+        </View>
+    );
+}
+
+// --- Action Menu (Quick Actions) ---
 function ActionMenu({ visible, onClose }: { visible: boolean; onClose: () => void }) {
     const navigation = useNavigation<any>();
 
@@ -112,7 +201,7 @@ function MainTabs() {
                     component={AcademicScreen}
                     options={{
                         tabBarButton: (props) => (
-                            <TabButton {...props} label="Acadêmico" icon="school" focused={props.accessibilityState?.selected} />
+                            <TabButton {...props} label="Alunos" icon="people" focused={props.accessibilityState?.selected} />
                         ),
                     }}
                 />
@@ -139,11 +228,11 @@ function MainTabs() {
                     }}
                 />
                 <Tab.Screen
-                    name="Profile"
+                    name="Conta"
                     component={ProfileScreen}
                     options={{
                         tabBarButton: (props) => (
-                            <TabButton {...props} label="Perfil" icon="person" focused={props.accessibilityState?.selected} />
+                            <TabButton {...props} label="Conta" icon="person" focused={props.accessibilityState?.selected} />
                         ),
                     }}
                 />
@@ -153,6 +242,35 @@ function MainTabs() {
     );
 }
 
+// --- Drawer Navigator ---
+function MainDrawer() {
+    const navigation = useNavigation<any>();
+
+    return (
+        <DrawerContext.Provider value={{ openDrawer: () => navigation.openDrawer() }}>
+            <Drawer.Navigator
+                drawerContent={(props) => <CustomDrawerContent {...props} />}
+                screenOptions={{
+                    headerShown: false,
+                    drawerStyle: {
+                        width: width * 0.78,
+                    },
+                }}
+            >
+                <Drawer.Screen name="MainTabs" component={MainTabs} />
+                <Drawer.Screen name="Turmas" component={TurmasScreen} options={{ headerShown: true, title: 'Turmas' }} />
+                <Drawer.Screen name="Teachers" component={TeachersScreen} options={{ headerShown: true, title: 'Professores' }} />
+                <Drawer.Screen name="Graduações" component={GraduationsScreen} options={{ headerShown: true, title: 'Graduações' }} />
+                <Drawer.Screen name="Units" component={UnitsScreen} options={{ headerShown: true, title: 'Unidades' }} />
+                <Drawer.Screen name="Reports" component={ReportsScreen} options={{ headerShown: true, title: 'Relatórios' }} />
+                <Drawer.Screen name="Financial" component={FinancialScreen} options={{ headerShown: true, title: 'Financeiro' }} />
+                <Drawer.Screen name="Settings" component={SettingsScreen} options={{ headerShown: true, title: 'Configurações' }} />
+            </Drawer.Navigator>
+        </DrawerContext.Provider>
+    );
+}
+
+// --- Main Stack ---
 export default function AppNavigator() {
     const { user } = useAuth();
 
@@ -161,80 +279,89 @@ export default function AppNavigator() {
             {!user ? (
                 <Stack.Screen name="Login" component={LoginScreen} />
             ) : (
-                <>
-                    <Stack.Screen name="Main" component={MainTabs} />
-                    <Stack.Screen
-                        name="Graduações"
-                        component={GraduationsScreen}
-                        options={{ headerShown: true, title: 'Graduações' }}
-                    />
-                    <Stack.Screen
-                        name="StudentDetails"
-                        component={StudentDetailsScreen}
-                        options={{ headerShown: true, title: 'Detalhes do Aluno' }}
-                    />
-                    <Stack.Screen
-                        name="ProfileScreen" // Avoid name conflict with Tab
-                        component={ProfileScreen}
-                        options={{ headerShown: true, title: 'Meu Perfil' }}
-                    />
-                    <Stack.Screen
-                        name="Financial"
-                        component={ProfileScreen} // Placeholder
-                        options={{ headerShown: true, title: 'Financeiro' }}
-                    />
-                    <Stack.Screen
-                        name="Reports"
-                        component={ProfileScreen} // Placeholder
-                        options={{ headerShown: true, title: 'Relatórios' }}
-                    />
-                    <Stack.Screen
-                        name="Units"
-                        component={UnitsScreen}
-                        options={{ headerShown: true, title: 'Unidades' }}
-                    />
-                    <Stack.Screen
-                        name="UnitCreate"
-                        component={UnitCreateScreen}
-                        options={{ headerShown: true, title: 'Unidade' }}
-                    />
-                    <Stack.Screen
-                        name="Turmas"
-                        component={TurmasScreen}
-                        options={{ headerShown: true, title: 'Turmas' }}
-                    />
-                    <Stack.Screen
-                        name="TurmaCreate"
-                        component={TurmaCreateScreen}
-                        options={{ headerShown: true, title: 'Turma' }}
-                    />
-                    <Stack.Screen
-                        name="Teachers"
-                        component={TeachersScreen}
-                        options={{ headerShown: true, title: 'Professores' }}
-                    />
-                    <Stack.Screen
-                        name="TeacherCreate"
-                        component={TeacherCreateScreen}
-                        options={{ headerShown: true, title: 'Professor' }}
-                    />
-                    <Stack.Screen
-                        name="ActivityTypes"
-                        component={ActivityTypesScreen}
-                        options={{ headerShown: true, title: 'Tipos de Atividade' }}
-                    />
-                    <Stack.Screen
-                        name="Presenca"
-                        component={PresenceScreen}
-                        options={{ headerShown: false }}
-                    />
-                </>
+                <Stack.Group>
+                    <Stack.Screen name="Main" component={MainDrawer} />
+                    {/* Detail screens move here to be outside the drawer if needed, or keep inside. 
+                        Usually details are better in a stack that covers the drawer. */}
+                    <Stack.Screen name="StudentDetails" component={StudentDetailsScreen} options={{ headerShown: true, title: 'Detalhes do Aluno' }} />
+                    <Stack.Screen name="ProfileScreen" component={ProfileScreen} options={{ headerShown: true, title: 'Meu Perfil' }} />
+                    <Stack.Screen name="UnitCreate" component={UnitCreateScreen} options={{ headerShown: true, title: 'Unidade' }} />
+                    <Stack.Screen name="TurmaCreate" component={TurmaCreateScreen} options={{ headerShown: true, title: 'Turma' }} />
+                    <Stack.Screen name="TeacherCreate" component={TeacherCreateScreen} options={{ headerShown: true, title: 'Professor' }} />
+                    <Stack.Screen name="ActivityTypes" component={ActivityTypesScreen} options={{ headerShown: true, title: 'Tipos de Atividade' }} />
+                    <Stack.Screen name="Presenca" component={PresenceScreen} options={{ headerShown: false }} />
+                </Stack.Group>
             )}
         </Stack.Navigator>
     );
 }
 
 const styles = StyleSheet.create({
+    // Drawer Header
+    drawerHeader: {
+        backgroundColor: '#4F46E5',
+        padding: 24,
+        paddingTop: 60,
+        paddingBottom: 28,
+    },
+    drawerBrand: {
+        color: '#FFF',
+        fontSize: 24,
+        fontWeight: 'bold',
+    },
+    drawerVersion: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 12,
+        marginTop: 4,
+    },
+    drawerSection: {
+        marginTop: 8,
+        paddingHorizontal: 16,
+    },
+    sectionTitle: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#9CA3AF',
+        textTransform: 'uppercase',
+        letterSpacing: 1.2,
+        marginBottom: 4,
+        marginTop: 16,
+        marginLeft: 4,
+    },
+    drawerItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 2,
+    },
+    drawerIconContainer: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        backgroundColor: '#EEF2FF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    drawerLabel: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#374151',
+    },
+    drawerFooter: {
+        padding: 20,
+        borderTopWidth: 1,
+        borderTopColor: '#F3F4F6',
+        alignItems: 'center'
+    },
+    footerText: {
+        fontSize: 10,
+        color: '#9CA3AF',
+        fontWeight: 'bold'
+    },
+    // Tab Bar
     tabBar: {
         position: 'absolute',
         bottom: 25,
@@ -296,7 +423,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 8,
     },
-    // Modal Styles
+    // Action Menu Modal
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.4)',

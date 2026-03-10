@@ -14,6 +14,9 @@ import Reports from './pages/Reports'
 import SettingsGeneral from './pages/SettingsGeneral'
 import SettingsUsers from './pages/SettingsUsers'
 import { AcademicSettings } from './pages/AcademicSettings'
+import ActivitiesPage from './pages/ActivitiesPage'
+import UnitsPage from './pages/UnitsPage'
+import SetupPage from './pages/SetupPage'
 
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AppShell, Sidebar, TopBar, PageHeader, Toolbar, Button, type IconName, type SidebarItem } from '@gingaflow/ui'
@@ -82,11 +85,9 @@ function AppContent() {
         <Route
           path="/attendance"
           element={
-            <ProtectedRoute allowedRoles={['PROFESSOR']}>
-              <Shell title="Lista de Chamada" subtitle="Controle de presença">
-                <AttendancePage />
-              </Shell>
-            </ProtectedRoute>
+            <Shell title="Lista de Chamada" subtitle="Controle de presença">
+              <AttendancePage />
+            </Shell>
           }
         />
         <Route
@@ -137,6 +138,39 @@ function AppContent() {
             <ProtectedRoute allowedRoles={['ADMIN']}>
               <Shell title="Relatórios" subtitle="Dashboards e indicadores">
                 <Reports />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/activities"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <Shell title="Tipos de Atividade" subtitle="Gerencie as modalidades da academia">
+                <ActivitiesPage />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/units"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <Shell
+                title="Unidades & Turmas"
+                subtitle="Gerencie unidades e suas turmas"
+              >
+                <UnitsPage />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/setup"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <Shell title="Configuração Inicial" subtitle="Configure o sistema passo a passo">
+                <SetupPage />
               </Shell>
             </ProtectedRoute>
           }
@@ -218,11 +252,21 @@ function Shell({
     ...(role === 'ADMIN' ? [{ label: 'Professores', path: '/teachers' }] : []),
     ...(role === 'ADMIN' ? [{ label: 'Graduações', path: '/graduations' }] : []),
     ...(role === 'PROFESSOR' ? [{ label: 'Agenda', path: '/agenda' }] : []),
-    ...(role === 'PROFESSOR' ? [{ label: 'Lista de Chamada', path: '/attendance' }] : [])
+    { label: 'Lista de Chamada', path: '/attendance' }
   ]
 
   const groupedItems: SidebarItem[] = [
+    ...(role === 'ADMIN' ? [{ label: 'Configuração Inicial', icon: 'check-circle' as IconName, path: '/setup' }] : []),
     { label: 'Acadêmico', icon: 'graduations' as IconName, path: '/academic', children: academicChildren },
+    ...(role === 'ADMIN' ? [{
+      label: 'Operacional',
+      icon: 'home' as IconName,
+      path: '/units',
+      children: [
+        { label: 'Unidades & Turmas', path: '/units' },
+        { label: 'Atividades', path: '/activities' }
+      ]
+    }] : []),
     ...(role === 'ADMIN' ? [{ label: 'Financeiro', icon: 'finance' as IconName, path: '/finance', children: [{ label: 'Visão Geral', path: '/finance' }] }] : []),
     ...(role === 'ADMIN' ? [{ label: 'Relatórios', icon: 'reports' as IconName, path: '/reports', children: [{ label: 'Acadêmico', path: '/reports' }, { label: 'Financeiro', path: '/reports' }] }] : []),
     ...(role === 'ADMIN' ? [{
@@ -280,7 +324,7 @@ function Shell({
           title={settings.groupName}
           onLogout={() => {
             localStorage.removeItem('token')
-            setAuth({ token: null, role: null, name: null, relatedId: null, loading: false })
+            setAuth({ token: null, role: null, name: null, organizationId: null, relatedId: null, loading: false })
             navigate('/login')
           }}
         />

@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { Button, Icon, Table, Badge, Modal, FormField, Input, Select, Card } from '@gingaflow/ui'
-import { listPayments, createPayment, updatePayment, deletePayment, markAsPaid, Payment } from '../services/payments'
-import { listStudents, Student } from '../services/students'
+import { PaymentRecord, paymentRepository } from '../repositories/paymentRepository'
+import { studentRepository } from '../repositories/studentRepository'
+import { Student } from '../services/students'
+import { useAuth } from '../contexts/AuthContext'
 import { toast } from 'sonner'
 
 export default function PaymentsList() {
-    const [payments, setPayments] = useState<Payment[]>([])
+    const { auth } = useAuth()
+    const [payments, setPayments] = useState<PaymentRecord[]>([])
     const [students, setStudents] = useState<Student[]>([])
     const [loading, setLoading] = useState(false)
     const [showModal, setShowModal] = useState(false)
-    const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
+    const [editingPayment, setEditingPayment] = useState<PaymentRecord | null>(null)
     const [filterStatus, setFilterStatus] = useState<'PAGO' | 'EM_ABERTO' | 'ATRASADO' | ''>('')
     const [page, setPage] = useState(1)
     const [total, setTotal] = useState(0)
@@ -22,13 +25,18 @@ export default function PaymentsList() {
     async function loadPayments() {
         setLoading(true)
         try {
-            const res = await listPayments({
-                page,
-                per_page: 20,
-                status: filterStatus || undefined
-            })
-            setPayments(res.data)
-            setTotal(res.meta.total)
+            // Simplified for now: get all or filtered locally
+            // In a real app we'd filter the repository call
+            const studentId = undefined // Could add student filter
+            const res = await paymentRepository.getByStudent(studentId || '') 
+            
+            let filtered = res
+            if (filterStatus) {
+                filtered = res.filter(p => p.status === filterStatus)
+            }
+            
+            setPayments(filtered)
+            setTotal(filtered.length)
         } catch (e) {
             console.error(e)
             toast.error('Erro ao carregar pagamentos')
@@ -39,16 +47,21 @@ export default function PaymentsList() {
 
     async function loadStudents() {
         try {
-            const res = await listStudents({ per_page: 100 })
-            setStudents(res.data)
+            const res = await studentRepository.getAll()
+            setStudents(res as any)
         } catch (e) {
             console.error(e)
         }
     }
 
-    async function handleMarkAsPaid(payment: Payment) {
+    async function handleMarkAsPaid(payment: PaymentRecord) {
         try {
-            await markAsPaid(payment.id, 'PIX')
+            await paymentRepository.save({
+                ...payment,
+                status: 'PAGO',
+                paid_at: new Date().toISOString(),
+                method: 'PIX'
+            })
             toast.success('Pagamento marcado como pago!')
             loadPayments()
         } catch (e: any) {
@@ -61,7 +74,7 @@ export default function PaymentsList() {
         if (!confirm('Deseja realmente excluir este pagamento?')) return
 
         try {
-            await deletePayment(id)
+            await paymentRepository.delete(id)
             toast.success('Pagamento excluído com sucesso!')
             loadPayments()
         } catch (e: any) {
@@ -133,52 +146,55 @@ export default function PaymentsList() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {payments.map((payment) => (
-                                    <tr key={payment.id} className="hover:bg-gray-50">
-                                        <td className="px-4 py-3">
-                                            <div>
-                                                <div className="font-medium text-gray-900">{payment.student?.full_name}</div>
-                                                <div className="text-sm text-gray-500">{payment.student?.cpf}</div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-gray-900">{payment.period}</td>
-                                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                            {formatCurrency(payment.monthlyFeeCents)}
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-gray-900">Dia {payment.dueDay}</td>
-                                        <td className="px-4 py-3">{getStatusBadge(payment.status)}</td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-2">
-                                                {payment.status !== 'PAGO' && (
+                                {payments.map((payment) => {
+                                    const student = students.find(s => s.id === payment.student_id)
+                                    return (
+                                        <tr key={payment.id} className="hover:bg-gray-50">
+                                            <td className="px-4 py-3">
+                                                <div>
+                                                    <div className="font-medium text-gray-900">{student?.full_name || 'Aluno removido'}</div>
+                                                    <div className="text-sm text-gray-500">{student?.cpf}</div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-gray-900">{payment.period}</td>
+                                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                                {formatCurrency(payment.monthly_fee_cents)}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-gray-900">Dia {payment.due_day}</td>
+                                            <td className="px-4 py-3">{getStatusBadge(payment.status)}</td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-2">
+                                                    {payment.status !== 'PAGO' && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => handleMarkAsPaid(payment)}
+                                                            title="Marcar como pago"
+                                                        >
+                                                            <Icon name="check" />
+                                                        </Button>
+                                                    )}
                                                     <Button
                                                         size="sm"
                                                         variant="ghost"
-                                                        onClick={() => handleMarkAsPaid(payment)}
-                                                        title="Marcar como pago"
+                                                        onClick={() => { setEditingPayment(payment); setShowModal(true) }}
+                                                        title="Editar"
                                                     >
-                                                        <Icon name="check" />
+                                                        <Icon name="edit" />
                                                     </Button>
-                                                )}
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() => { setEditingPayment(payment); setShowModal(true) }}
-                                                    title="Editar"
-                                                >
-                                                    <Icon name="edit" />
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() => handleDelete(payment.id)}
-                                                    title="Excluir"
-                                                >
-                                                    <Icon name="trash" />
-                                                </Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => handleDelete(payment.id)}
+                                                        title="Excluir"
+                                                    >
+                                                        <Icon name="trash" />
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -217,6 +233,7 @@ export default function PaymentsList() {
                 <PaymentModal
                     payment={editingPayment}
                     students={students}
+                    organizationId={auth.organizationId || ''}
                     onClose={() => setShowModal(false)}
                     onSuccess={() => {
                         setShowModal(false)
@@ -231,18 +248,20 @@ export default function PaymentsList() {
 function PaymentModal({
     payment,
     students,
+    organizationId,
     onClose,
     onSuccess
 }: {
-    payment: Payment | null
+    payment: PaymentRecord | null
     students: Student[]
+    organizationId: string
     onClose: () => void
     onSuccess: () => void
 }) {
     const [formData, setFormData] = useState({
-        student_id: payment?.studentId || '',
-        monthly_fee: payment ? String(payment.monthlyFeeCents / 100) : '',
-        due_day: payment?.dueDay || 10,
+        student_id: payment?.student_id || '',
+        monthly_fee: payment ? String(payment.monthly_fee_cents / 100) : '',
+        due_day: payment?.due_day || 10,
         period: payment?.period || new Date().toISOString().slice(0, 7),
         status: payment?.status || 'EM_ABERTO' as 'PAGO' | 'EM_ABERTO' | 'ATRASADO',
         method: payment?.method || '',
@@ -259,21 +278,21 @@ function PaymentModal({
         setLoading(true)
         try {
             const cleanData: any = {
+                organization_id: organizationId,
                 student_id: formData.student_id,
-                monthly_fee: formData.monthly_fee,
+                monthly_fee_cents: Math.round(parseFloat(formData.monthly_fee) * 100),
                 due_day: formData.due_day,
                 period: formData.period,
-                status: formData.status
+                status: formData.status,
+                method: formData.method,
+                notes: formData.notes
             }
 
-            if (formData.method) cleanData.method = formData.method
-            if (formData.notes) cleanData.notes = formData.notes
-
             if (payment) {
-                await updatePayment(payment.id, cleanData)
+                await paymentRepository.save({ ...cleanData, id: payment.id })
                 toast.success('Pagamento atualizado com sucesso!')
             } else {
-                await createPayment(cleanData)
+                await paymentRepository.save(cleanData)
                 toast.success('Pagamento criado com sucesso!')
             }
             onSuccess()

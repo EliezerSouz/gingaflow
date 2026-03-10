@@ -97,11 +97,12 @@ export async function registerStudentRoutes(app: FastifyInstance) {
               }
             }
           },
-          schedules: true, // Added schedules include
+          schedules: true,
           graduations: {
             take: 1,
             orderBy: { date: 'desc' }
-          }
+          },
+          currentGraduation: true
         }
       }),
       prisma.student.count({ where })
@@ -127,7 +128,11 @@ export async function registerStudentRoutes(app: FastifyInstance) {
           cordaType: gradData?.cordaType
         }
       })
-      return { ...student, graduations: enrichedGraduations }
+      return { 
+        ...student, 
+        graduations: enrichedGraduations,
+        level: student.currentGraduation?.name || (enrichedGraduations[0]?.level !== 'Desconhecida' ? enrichedGraduations[0]?.level : null)
+      }
     })
 
     return {
@@ -169,7 +174,8 @@ export async function registerStudentRoutes(app: FastifyInstance) {
         },
         payments: { take: 5, orderBy: { period: 'desc' } },
         graduations: { take: 10, orderBy: { date: 'desc' } },
-        schedules: true
+        schedules: true,
+        currentGraduation: true
       }
     })
     if (!student) return reply.status(404).send({ code: 'NOT_FOUND', message: 'Aluno não encontrado' })

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { getSettings, updateSettings as apiUpdateSettings, SystemSettings } from '../services/settings'
+import { SystemSettings } from '../services/settings'
+import { systemSettingsRepository } from '../repositories/systemSettingsRepository'
 import { useAuth } from './AuthContext'
 
 type SettingsContextType = {
@@ -30,7 +31,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const refreshSettings = async () => {
     try {
-      const data = await getSettings()
+      const data = await systemSettingsRepository.get()
       setSettings(data)
     } catch (error) {
       console.error('Failed to load settings:', error)
@@ -39,7 +40,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const updateSettings = async (data: Partial<SystemSettings>) => {
     try {
-      const updated = await apiUpdateSettings(data)
+      const updated = await systemSettingsRepository.update(data)
       setSettings(updated)
     } catch (error) {
       console.error('Failed to update settings:', error)

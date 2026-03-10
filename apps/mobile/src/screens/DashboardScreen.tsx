@@ -1,4 +1,3 @@
-// DASHBOARD V3 - REAL DATA ONLY
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Dimensions, Image, Modal, Pressable } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -6,9 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
 import { Card } from '../components/ui/Card';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
-import { SimpleDrawer } from '../components/SimpleDrawer';
 import { useAuth } from '../context/AuthContext';
 import { CordaBadge } from '../components/ui/CordaBadge';
+import { useDrawer } from '../navigation/AppNavigator';
 
 const { width } = Dimensions.get('window');
 
@@ -68,11 +67,10 @@ interface DashboardData {
 
 export default function DashboardScreen() {
     const navigation = useNavigation<any>();
-    const { user } = useAuth();
+    const { openDrawer } = useDrawer();
+    const { user, signOut } = useAuth();
     const [loading, setLoading] = useState(false);
-    const [showDrawer, setShowDrawer] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const { signOut } = useAuth();
     const [data, setData] = useState<DashboardData | null>(null);
     const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
     const [selectedClassForStudents, setSelectedClassForStudents] = useState<any | null>(null);
@@ -91,16 +89,10 @@ export default function DashboardScreen() {
                 params: { unitId: unitId || undefined }
             });
             setData(response.data);
-            console.log('✅ Dashboard Data Loaded:', response.data.summary);
         } catch (e: any) {
             console.log('❌ Erro ao carregar dashboard:', e);
             const msg = e.response?.data?.message || 'Erro de conexão com a API';
             setError(msg);
-
-            // Se for erro de autenticação, o token pode estar sujo
-            if (e.response?.status === 401 || e.response?.status === 404) {
-                console.log('⚠️ Erro crítico de sessão detectado');
-            }
         } finally {
             setLoading(false);
         }
@@ -130,35 +122,6 @@ export default function DashboardScreen() {
         );
     }
 
-    function StatusCard({ icon, title, value, color, onPress }: any) {
-        return (
-            <TouchableOpacity style={styles.statusCard} onPress={onPress}>
-                <View style={[styles.statusIconBg, { backgroundColor: color + '15' }]}>
-                    <Ionicons name={icon} size={20} color={color} />
-                </View>
-                <View style={styles.statusInfo}>
-                    <Text style={styles.statusValue}>{value}</Text>
-                    <Text style={styles.statusTitle}>{title}</Text>
-                </View>
-            </TouchableOpacity>
-        );
-    }
-
-    function InsightItem({ icon, label, value, subLabel, color }: any) {
-        return (
-            <View style={styles.insightItem}>
-                <View style={[styles.insightIcon, { backgroundColor: color + '10' }]}>
-                    <Ionicons name={icon} size={18} color={color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.insightLabel}>{label}</Text>
-                    <Text style={styles.insightSubLabel}>{subLabel}</Text>
-                </View>
-                <Text style={[styles.insightValue, { color: color }]}>{value}</Text>
-            </View>
-        );
-    }
-
     function AlertItem({ icon, message, type }: any) {
         const color = type === 'danger' ? '#EF4444' : type === 'warning' ? '#F59E0B' : '#3B82F6';
         return (
@@ -176,7 +139,7 @@ export default function DashboardScreen() {
                     {loading ? (
                         <>
                             <ActivityIndicator size="large" color="#4F46E5" />
-                            <Text style={{ marginTop: 10, color: '#6B7280' }}>Carregando Dashboard Real...</Text>
+                            <Text style={{ marginTop: 10, color: '#6B7280' }}>Carregando Dashboard...</Text>
                         </>
                     ) : (
                         <>
@@ -185,23 +148,13 @@ export default function DashboardScreen() {
                                 Opa! Algo deu errado
                             </Text>
                             <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center', marginBottom: 20 }}>
-                                {error === 'Usuário não encontrado ou desativado'
-                                    ? 'Sua sessão expirou ou o usuário não existe mais no banco.'
-                                    : error}
+                                {error}
                             </Text>
-
                             <TouchableOpacity
                                 style={{ backgroundColor: '#4F46E5', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, width: '100%', alignItems: 'center', marginBottom: 10 }}
                                 onPress={() => loadMetrics(selectedUnitId)}
                             >
                                 <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Tentar Novamente</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, width: '100%', alignItems: 'center' }}
-                                onPress={() => signOut()}
-                            >
-                                <Text style={{ color: '#EF4444', fontWeight: '600' }}>Sair e Entrar Novamente</Text>
                             </TouchableOpacity>
                         </>
                     )}
@@ -215,30 +168,31 @@ export default function DashboardScreen() {
             {/* 1. HEADER */}
             <View style={styles.smartHeader}>
                 <View style={styles.headerTop}>
-                    <View>
-                        <Text style={styles.headerGreeting}>GingaFlow Pro 👋</Text>
+                    <TouchableOpacity onPress={() => openDrawer()} style={styles.menuButton}>
+                        <Ionicons name="menu" size={28} color="#4F46E5" />
+                    </TouchableOpacity>
+                    <View style={{ flex: 1, marginLeft: 16 }}>
+                        <Text style={styles.headerGreeting}>GingaFlow 👋</Text>
                         <Text style={styles.headerDate}>{currentDate}</Text>
                     </View>
-                    <View style={styles.headerActions}>
-                        <TouchableOpacity onPress={() => setShowDrawer(true)} style={styles.avatarButton}>
-                            <View style={styles.avatarPlaceholder}>
-                                <Text style={styles.avatarLetter}>{user?.name?.[0] || 'U'}</Text>
-                            </View>
-                        </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity onPress={() => navigation.navigate('Conta')} style={styles.avatarButton}>
+                        <View style={styles.avatarPlaceholder}>
+                            <Text style={styles.avatarLetter}>{user?.name?.[0] || 'U'}</Text>
+                        </View>
+                    </TouchableOpacity>
                 </View>
 
                 <View style={styles.headerBottom}>
                     <View style={styles.liveMetrics}>
                         <View style={styles.liveIndicator} />
                         <Text style={styles.liveText}>
-                            {selectedUnitId ? 'Visão por Unidade' : 'Visão Global'} - {data?.status.activeStudents || 0} alunos ativos
+                            {selectedUnitId ? 'Unidade Selecionada' : 'Visão Global'}
                         </Text>
                     </View>
                 </View>
             </View>
 
-            {/* 1.5 SELETOR DE UNIDADES (CHIPS) */}
+            {/* 2. SELETOR DE UNIDADES */}
             <View style={styles.unitFilterContainer}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitChipsScroll}>
                     <TouchableOpacity
@@ -264,11 +218,11 @@ export default function DashboardScreen() {
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
-                refreshControl={<RefreshControl refreshing={loading} onRefresh={loadMetrics} tintColor="#4F46E5" />}
+                refreshControl={<RefreshControl refreshing={loading} onRefresh={() => loadMetrics(selectedUnitId)} tintColor="#4F46E5" />}
             >
-                {/* 2. RESUMO DO DIA */}
+                {/* 3. INDICADORES DO DIA */}
                 <Card style={styles.summaryCard}>
-                    <Text style={styles.summaryTitle}>INDICADORES REAIS (HOJE)</Text>
+                    <Text style={styles.summaryTitle}>INDICADORES DO DIA</Text>
                     <View style={styles.summaryGrid}>
                         <View style={styles.summaryItem}>
                             <Text style={styles.summaryValue}>{data?.summary.presences || 0}</Text>
@@ -293,317 +247,232 @@ export default function DashboardScreen() {
                     </View>
                 </Card>
 
-                {/* 3. STATUS */}
-                <SectionTitle title="Status da Academia" />
-                <View style={styles.statusGrid}>
-                    <StatusCard
-                        icon="people"
-                        title="Alunos"
-                        value={data?.status.activeStudents || 0}
-                        color="#4F46E5"
-                        onPress={() => navigation.navigate('Acadêmico')}
-                    />
-                    <StatusCard
-                        icon="school"
-                        title="Profs"
-                        value={data?.status.activeTeachers || 0}
-                        color="#8B5CF6"
-                        onPress={() => navigation.navigate('Teachers')}
-                    />
-                    <StatusCard
-                        icon="business"
-                        title="Unidades"
-                        value={data?.status.unitsCount || 0}
-                        color="#EF4444"
-                        onPress={() => navigation.navigate('Units')}
-                    />
-                    <StatusCard
-                        icon="layers"
-                        title="Turmas"
-                        value={data?.status.turmasCount || 0}
-                        color="#3B82F6"
-                        onPress={() => navigation.navigate('Turmas')}
-                    />
-                </View>
+                {/* 4. AULA EM ANDAMENTO */}
+                {(() => {
+                    const activeClass = data?.classesToday.find(c => c.status === 'EM_ANDAMENTO');
+                    if (!activeClass) return null;
+                    return (
+                        <>
+                            <SectionTitle title="Aula em Andamento" />
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('Presenca', { turmaId: activeClass.turmaId, time: activeClass.time })}
+                                activeOpacity={0.9}
+                            >
+                                <Card style={[styles.activeClassCard, { borderColor: activeClass.unitColor }]}>
+                                    <View style={styles.activeClassHeader}>
+                                        <View style={styles.liveDotContainer}>
+                                            <View style={styles.liveDot} />
+                                            <Text style={styles.liveLabel}>AO VIVO</Text>
+                                        </View>
+                                        <Text style={styles.activeClassTime}>{activeClass.time}</Text>
+                                    </View>
+                                    <View style={styles.activeClassMain}>
+                                        <Text style={styles.activeClassName}>{activeClass.name}</Text>
+                                        <Text style={styles.activeClassSub}>{activeClass.teacher} • {activeClass.unitName}</Text>
+                                    </View>
+                                    <View style={styles.activeClassFooter}>
+                                        <View style={styles.activeClassStats}>
+                                            <Ionicons name="people" size={16} color="#6B7280" />
+                                            <Text style={styles.activeClassStatsText}>{activeClass.count} presentes</Text>
+                                        </View>
+                                        <View style={styles.activeButton}>
+                                            <Text style={styles.activeButtonText}>Fazer Chamada</Text>
+                                            <Ionicons name="chevron-forward" size={16} color="#FFF" />
+                                        </View>
+                                    </View>
+                                </Card>
+                            </TouchableOpacity>
+                        </>
+                    );
+                })()}
 
-                {/* 4. AULAS DE HOJE - TIMELINE */}
-                <SectionTitle title="Grade de Aulas" subtitle="Acompanhamento em tempo real" />
+                {/* 5. PRÓXIMA AULA */}
+                {(() => {
+                    const nextClass = data?.classesToday.find(c => c.status === 'AGENDADA');
+                    if (!nextClass) return null;
+                    return (
+                        <>
+                            <SectionTitle title="Próxima Aula" subtitle="Prepare os materiais" />
+                            <Card style={styles.nextClassCard}>
+                                <View style={styles.nextClassRow}>
+                                    <View style={styles.nextClassTimeBox}>
+                                        <Text style={styles.nextClassTime}>{nextClass.time}</Text>
+                                        <Text style={styles.nextClassDuration}>{nextClass.durationMinutes} min</Text>
+                                    </View>
+                                    <View style={styles.nextClassInfo}>
+                                        <Text style={styles.nextClassName}>{nextClass.name}</Text>
+                                        <Text style={styles.nextClassSub}>{nextClass.teacher} • {nextClass.unitName}</Text>
+                                    </View>
+                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: nextClass.unitColor }} />
+                                </View>
+                            </Card>
+                        </>
+                    );
+                })()}
 
-                {!data?.classesToday || data.classesToday.length === 0 ? (
-                    <Card style={styles.classesCard}>
-                        <View style={{ padding: 40, alignItems: 'center' }}>
-                            <Ionicons name="calendar-outline" size={32} color="#D1D5DB" />
-                            <Text style={{ color: '#9CA3AF', marginTop: 10 }}>Nenhuma aula para hoje</Text>
-                        </View>
-                    </Card>
-                ) : (
-                    <View style={styles.timelineContainer}>
-                        {data.classesToday.map((item, index) => {
-                            const isFirst = index === 0;
-                            const isLast = index === data.classesToday.length - 1;
-
-                            let statusColor = '#FBBF24'; // AGENDADA
-                            let statusText = 'PRÓXIMA';
-                            let statusIcon: any = 'time-outline';
-
-                            if (item.status === 'EM_ANDAMENTO') {
-                                statusColor = '#10B981';
-                                statusText = 'EM ANDAMENTO';
-                                statusIcon = 'play-circle-outline';
-                            } else if (item.status === 'FINALIZADA') {
-                                statusColor = '#6B7280';
-                                statusText = 'FINALIZADA';
-                                statusIcon = 'checkmark-circle-outline';
-                            }
-
-                            return (
+                {/* 6. TIMELINE DAS AULAS */}
+                {data?.classesToday && data.classesToday.length > 0 && (
+                    <>
+                        <SectionTitle
+                            title="Agenda de Hoje"
+                            subtitle={`${data.classesToday.length} aulas programadas`}
+                            onPress={() => navigation.navigate('Agenda')}
+                        />
+                        <View style={styles.timelineContainer}>
+                            {data.classesToday.map((item, index) => (
                                 <View key={item.id} style={styles.timelineItem}>
-                                    {/* Linha da timeline */}
+                                    {/* Track Line */}
                                     <View style={styles.timelineTrack}>
-                                        <View style={[styles.timelineLine, isFirst && styles.timelineLineFirst, isLast && styles.timelineLineLast]} />
-                                        <View style={[styles.timelineDot, { backgroundColor: statusColor }]}>
-                                            <View style={[styles.timelineDotInner, { backgroundColor: '#fff' }]} />
+                                        <View style={[
+                                            styles.timelineLine,
+                                            index === 0 && styles.timelineLineFirst,
+                                            index === data.classesToday.length - 1 && styles.timelineLineLast
+                                        ]} />
+                                        <View style={[styles.timelineDot, { backgroundColor: item.unitColor }]}>
+                                            <View style={styles.timelineDotInner} />
                                         </View>
                                     </View>
 
-                                    {/* Card da Aula */}
-                                    <View style={[styles.timelineContent, item.status === 'EM_ANDAMENTO' && styles.activeClassContent]}>
-                                        <View style={styles.classHeader}>
-                                            <View style={styles.timeInfo}>
-                                                <Text style={styles.timelineTime}>{item.time}</Text>
-                                                <Text style={styles.durationText}>{item.durationMinutes} min</Text>
-                                            </View>
-
-                                            <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-                                                <Ionicons name={statusIcon} size={12} color={statusColor} />
-                                                <Text style={[styles.statusBadgeText, { color: statusColor }]}>{statusText}</Text>
-                                            </View>
-                                        </View>
-
-                                        <View style={styles.classMainInfo}>
-                                            <View style={{ flex: 1 }}>
-                                                <View style={styles.nameRow}>
-                                                    <Text style={styles.timelineClassName}>{item.name}</Text>
-                                                    <View style={[styles.unitBadge, { backgroundColor: item.unitColor + '15', borderColor: item.unitColor + '30' }]}>
-                                                        <Text style={[styles.unitBadgeText, { color: item.unitColor }]}>{item.unitName}</Text>
-                                                    </View>
-                                                </View>
-                                                <Text style={styles.timelineTeacherName}>{item.teacher}</Text>
-                                            </View>
-
-                                            <TouchableOpacity
-                                                style={styles.occupancyInfo}
-                                                onPress={() => setSelectedClassForStudents(item)}
-                                            >
-                                                <Ionicons name="people-outline" size={14} color="#6B7280" />
-                                                <Text style={styles.occupancyText}>{item.enrolledCount}</Text>
-                                            </TouchableOpacity>
-                                        </View>
-
-                                        {/* Ações da Aula */}
-                                        <View style={styles.classActions}>
-                                            <View style={styles.occupancyStatusRow}>
-                                                <View style={[styles.miniDot, { backgroundColor: item.occupancyStatus === 'Aula Cheia' ? '#EF4444' : '#10B981' }]} />
-                                                <Text style={[styles.occupancyStatusText, { color: item.occupancyStatus === 'Aula Cheia' ? '#EF4444' : '#10B981' }]}>
-                                                    {item.occupancyStatus}
+                                    {/* Content Card */}
+                                    <TouchableOpacity
+                                        style={styles.timelineContent}
+                                        onPress={() => setSelectedClassForStudents(item)}
+                                    >
+                                        <View style={styles.timelineHeader}>
+                                            <Text style={styles.timelineTime}>{item.time}</Text>
+                                            <View style={[styles.unitBadgeSmall, { backgroundColor: item.unitColor + '15' }]}>
+                                                <Text style={[styles.unitBadgeTextSmall, { color: item.unitColor }]}>
+                                                    {item.unitName}
                                                 </Text>
                                             </View>
-
-                                            {item.attendanceAvailable && (
-                                                <TouchableOpacity
-                                                    style={styles.attendanceButton}
-                                                    onPress={() => {
-                                                        // Abrir tela de chamada ou modal focado
-                                                        navigation.navigate('Presenca', { turmaId: item.turmaId, time: item.time });
-                                                    }}
-                                                >
-                                                    <Ionicons name="checkbox-outline" size={16} color="#fff" />
-                                                    <Text style={styles.attendanceButtonText}>Abrir Chamada</Text>
-                                                </TouchableOpacity>
-                                            )}
                                         </View>
-                                    </View>
+                                        <Text style={styles.timelineName}>{item.name}</Text>
+                                        <View style={styles.timelineFooter}>
+                                            <Text style={styles.timelineTeacher}>{item.teacher}</Text>
+                                            <View style={styles.studentCounter}>
+                                                <Ionicons name="people" size={12} color="#9CA3AF" />
+                                                <Text style={styles.studentCounterText}>{item.count}/{item.enrolledCount}</Text>
+                                            </View>
+                                        </View>
+                                    </TouchableOpacity>
                                 </View>
-                            );
-                        })}
-                    </View>
+                            ))}
+                        </View>
+                    </>
                 )}
 
-                {/* Modal de Alunos da Aula */}
-                <Modal
-                    visible={!!selectedClassForStudents}
-                    transparent
-                    animationType="slide"
-                    onRequestClose={() => setSelectedClassForStudents(null)}
-                >
-                    <Pressable
-                        style={styles.modalOverlay}
-                        onPress={() => setSelectedClassForStudents(null)}
-                    >
-                        <View style={styles.studentsModalContainer} onStartShouldSetResponder={() => true}>
-                            <View style={styles.modalHandle} />
-                            <Text style={styles.modalTitle}>Alunos Matriculados</Text>
-                            <Text style={styles.modalSubtitle}>
-                                {selectedClassForStudents?.name} - {selectedClassForStudents?.time}
-                            </Text>
-
-                            <ScrollView style={styles.studentsListScroll} showsVerticalScrollIndicator={false}>
-                                {!selectedClassForStudents?.students || selectedClassForStudents.students.length === 0 ? (
-                                    <View style={{ padding: 40, alignItems: 'center' }}>
-                                        <Ionicons name="people-outline" size={32} color="#D1D5DB" />
-                                        <Text style={{ color: '#9CA3AF', marginTop: 10 }}>Nenhum aluno matriculado neste horário</Text>
-                                    </View>
-                                ) : (
-                                    selectedClassForStudents.students.map((student: any) => (
-                                        <TouchableOpacity
-                                            key={student.id}
-                                            style={styles.studentItem}
-                                            onPress={() => {
-                                                setSelectedClassForStudents(null);
-                                                navigation.navigate('StudentDetails', { id: student.id });
-                                            }}
-                                        >
-                                            <View style={styles.studentInfo}>
-                                                <View style={styles.studentAvatarContainer}>
-                                                    {student.cord ? (
-                                                        <CordaBadge
-                                                            size="small"
-                                                            graduacao=""
-                                                            colorLeft={student.cord.colorLeft || student.cord.color}
-                                                            colorRight={student.cord.colorRight}
-                                                            pontaLeft={student.cord.pontaLeft}
-                                                            pontaRight={student.cord.pontaRight}
-                                                        />
-                                                    ) : (
-                                                        <View style={styles.studentAvatar}>
-                                                            <Text style={styles.studentAvatarText}>
-                                                                {student.name.substring(0, 1).toUpperCase()}
-                                                            </Text>
-                                                        </View>
-                                                    )}
-                                                </View>
-                                                <Text style={styles.studentNameLine}>{student.name}</Text>
-                                            </View>
-                                            <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
-                                        </TouchableOpacity>
-                                    ))
-                                )}
-                            </ScrollView>
-
-                            <TouchableOpacity
-                                style={styles.modalCloseButton}
-                                onPress={() => setSelectedClassForStudents(null)}
-                            >
-                                <Text style={styles.modalCloseButtonText}>Fechar</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </Pressable>
-                </Modal>
-
-                {/* 5. FINANCEIRO */}
-                <SectionTitle title="Performance Financeira" />
-                <View style={styles.financeGrid}>
-                    <Card style={styles.financeSmallCard}>
-                        <Text style={styles.financeLabel}>Faturamento (Mês)</Text>
-                        <Text style={styles.financeValue}>R$ {(data?.finance?.monthlyRevenue || 0).toLocaleString('pt-BR')}</Text>
-                        <View style={styles.trendBadge}>
-                            <Ionicons name="trending-up" size={12} color="#059669" />
-                            <Text style={styles.financeTrend}>Ticket Médio: R$ {data?.finance?.ticketAverage || 0}</Text>
-                        </View>
-                    </Card>
-                    <Card style={[styles.financeSmallCard, { backgroundColor: '#FEF2F2' }]}>
-                        <Text style={styles.financeLabel}>Inadimplência</Text>
-                        <Text style={[styles.financeValue, { color: '#EF4444' }]}>R$ {(data?.finance?.overdueValue || 0).toLocaleString('pt-BR')}</Text>
-                        <Text style={styles.financeSubLabel}>{data?.summary.overdueCount} faturas pendentes</Text>
-                    </Card>
-                </View>
-
-                {/* 6. ENGAJAMENTO */}
-                <SectionTitle title="Engajamento & Popularidade" />
-                <Card style={styles.engagementCard}>
-                    <Text style={styles.engagementSubTitle}>ATIVIDADES MAIS PROCURADAS</Text>
-                    {data?.engagement.popularActivities.map((act, idx) => (
-                        <InsightItem
-                            key={idx}
-                            icon="flash"
-                            label={act.name}
-                            subLabel="Matriculados"
-                            value={act.count}
-                            color="#8B5CF6"
-                        />
-                    ))}
-
-                    <View style={[styles.divider, { marginVertical: 15 }]} />
-
-                    <Text style={styles.engagementSubTitle}>TOP PROFESSORES (ALUNOS)</Text>
-                    {data?.engagement.topTeachers.map((teacher, idx) => (
-                        <InsightItem
-                            key={idx}
-                            icon="star"
-                            label={teacher.name}
-                            subLabel="Total de alunos"
-                            value={teacher.count}
-                            color="#F59E0B"
-                        />
-                    ))}
-                </Card>
-
-                {/* 7. ALERTAS */}
-                <SectionTitle title="Notificações e Alertas" />
+                {/* 7. ALERTAS IMPORTANTES */}
+                <SectionTitle title="Alertas Importantes" />
                 <View style={styles.alertsContainer}>
-                    {data?.alerts.length === 0 ? (
-                        <View style={styles.noAlerts}>
-                            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                            <Text style={styles.noAlertsText}>Tudo em ordem no momento!</Text>
-                        </View>
-                    ) : (
-                        data?.alerts.map((alert, i) => (
+                    {data?.alerts && data.alerts.length > 0 ? (
+                        data.alerts.map((alert, i) => (
                             <AlertItem key={i} icon={alert.icon} message={alert.message} type={alert.type} />
                         ))
+                    ) : (
+                        <View style={styles.noAlerts}>
+                            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                            <Text style={styles.noAlertsText}>Nenhum alerta crítico no momento</Text>
+                        </View>
                     )}
                 </View>
 
-                {/* 8. AÇÕES RÁPIDAS */}
-                <SectionTitle title="Menu de Operações" />
-                <View style={styles.quickActionsGrid}>
-                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Acadêmico')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#E0E7FF' }]}><Ionicons name="people" size={24} color="#4F46E5" /></View>
-                        <Text style={styles.qaLabel}>Alunos</Text>
+                {/* 7. ATALHOS PRINCIPAIS */}
+                <SectionTitle title="Principais Atalhos" />
+                <View style={styles.shortcutsGrid}>
+                    <TouchableOpacity style={styles.shortcutItem} onPress={() => navigation.navigate('Acadêmico')}>
+                        <View style={[styles.shortcutIcon, { backgroundColor: '#EEF2FF' }]}>
+                            <Ionicons name="person-add" size={24} color="#4F46E5" />
+                        </View>
+                        <Text style={styles.shortcutLabel}>Novo Aluno</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Agenda')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#DBEAFE' }]}><Ionicons name="calendar" size={24} color="#3B82F6" /></View>
-                        <Text style={styles.qaLabel}>Chamada</Text>
+                    <TouchableOpacity style={styles.shortcutItem} onPress={() => navigation.navigate('Agenda')}>
+                        <View style={[styles.shortcutIcon, { backgroundColor: '#ECFDF5' }]}>
+                            <Ionicons name="checkbox" size={24} color="#10B981" />
+                        </View>
+                        <Text style={styles.shortcutLabel}>Chamada</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Graduações')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#D1FAE5' }]}><Ionicons name="ribbon" size={24} color="#10B981" /></View>
-                        <Text style={styles.qaLabel}>Graduações</Text>
+                    <TouchableOpacity style={styles.shortcutItem} onPress={() => navigation.navigate('Financial')}>
+                        <View style={[styles.shortcutIcon, { backgroundColor: '#FFFBEB' }]}>
+                            <Ionicons name="cash" size={24} color="#F59E0B" />
+                        </View>
+                        <Text style={styles.shortcutLabel}>Pagamentos</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Units')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#FEE2E2' }]}><Ionicons name="business" size={24} color="#EF4444" /></View>
-                        <Text style={styles.qaLabel}>Unidades</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Turmas')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#FEF3C7' }]}><Ionicons name="layers" size={24} color="#F59E0B" /></View>
-                        <Text style={styles.qaLabel}>Turmas</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Teachers')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#E0E7FF' }]}><Ionicons name="school" size={24} color="#6366F1" /></View>
-                        <Text style={styles.qaLabel}>Professores</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('ActivityTypes')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#F3E8FF' }]}><Ionicons name="construct" size={24} color="#8B5CF6" /></View>
-                        <Text style={styles.qaLabel}>Atividades</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.qaButton} onPress={() => navigation.navigate('Finance')}>
-                        <View style={[styles.qaIconBg, { backgroundColor: '#F1F5F9' }]}><Ionicons name="card" size={24} color="#475569" /></View>
-                        <Text style={styles.qaLabel}>Pagamentos</Text>
+                    <TouchableOpacity style={styles.shortcutItem} onPress={() => navigation.navigate('Reports')}>
+                        <View style={[styles.shortcutIcon, { backgroundColor: '#F5F3FF' }]}>
+                            <Ionicons name="stats-chart" size={24} color="#8B5CF6" />
+                        </View>
+                        <Text style={styles.shortcutLabel}>Relatórios</Text>
                     </TouchableOpacity>
                 </View>
 
                 <View style={{ height: 100 }} />
             </ScrollView>
 
-            <SimpleDrawer visible={showDrawer} onClose={() => setShowDrawer(false)} />
+            <Modal
+                visible={!!selectedClassForStudents}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setSelectedClassForStudents(null)}
+            >
+                <Pressable
+                    style={styles.modalOverlay}
+                    onPress={() => setSelectedClassForStudents(null)}
+                >
+                    <View style={styles.studentsModalContainer} onStartShouldSetResponder={() => true}>
+                        <View style={styles.modalHandle} />
+                        <Text style={styles.modalTitle}>Alunos Matriculados</Text>
+                        <Text style={styles.modalSubtitle}>
+                            {selectedClassForStudents?.name} - {selectedClassForStudents?.time}
+                        </Text>
+
+                        <ScrollView style={styles.studentsListScroll} showsVerticalScrollIndicator={false}>
+                            {selectedClassForStudents?.students?.map((student: any) => (
+                                <TouchableOpacity
+                                    key={student.id}
+                                    style={styles.studentItem}
+                                    onPress={() => {
+                                        setSelectedClassForStudents(null);
+                                        navigation.navigate('StudentDetails', { id: student.id });
+                                    }}
+                                >
+                                    <View style={styles.studentInfo}>
+                                        <View style={styles.studentAvatarContainer}>
+                                            <View style={styles.studentAvatar}>
+                                                <Text style={styles.studentAvatarText}>
+                                                    {student.name.substring(0, 1).toUpperCase()}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        <View>
+                                            <Text style={styles.studentNameLine}>{student.name}</Text>
+                                            {student.cord && (
+                                                <View style={{ marginTop: 4 }}>
+                                                    <CordaBadge
+                                                        graduacao=""
+                                                        size="small"
+                                                        colorLeft={student.cord.colorLeft}
+                                                        colorRight={student.cord.colorRight}
+                                                        pontaLeft={student.cord.pontaLeft}
+                                                        pontaRight={student.cord.pontaRight}
+                                                    />
+                                                </View>
+                                            )}
+                                        </View>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+
+                        <TouchableOpacity
+                            style={styles.modalCloseButton}
+                            onPress={() => setSelectedClassForStudents(null)}
+                        >
+                            <Text style={styles.modalCloseButtonText}>Fechar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </Pressable>
+            </Modal>
         </ScreenContainer>
     );
 }
@@ -633,9 +502,13 @@ const styles = StyleSheet.create({
         color: '#6B7280',
         textTransform: 'capitalize'
     },
-    headerActions: {
-        flexDirection: 'row',
+    menuButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: '#F3F4F6',
         alignItems: 'center',
+        justifyContent: 'center',
     },
     avatarPlaceholder: {
         width: 44,
@@ -650,24 +523,16 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold'
     },
+    avatarButton: {
+        elevation: 4,
+        shadowColor: '#4F46E5',
+        shadowOpacity: 0.3,
+        shadowRadius: 8
+    },
     headerBottom: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center'
-    },
-    unitSelector: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        backgroundColor: '#EEF2FF',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 12
-    },
-    unitName: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: '#4F46E5'
     },
     liveMetrics: {
         flexDirection: 'row',
@@ -684,6 +549,36 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#6B7280',
         fontWeight: '600'
+    },
+    unitFilterContainer: {
+        backgroundColor: '#FFF',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6'
+    },
+    unitChipsScroll: {
+        paddingHorizontal: 20,
+        gap: 10
+    },
+    unitChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: '#F3F4F6',
+        borderWidth: 1,
+        borderColor: '#E5E7EB'
+    },
+    unitChipActive: {
+        backgroundColor: '#4F46E5',
+        borderColor: '#4F46E5'
+    },
+    unitChipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#6B7280'
+    },
+    unitChipTextActive: {
+        color: '#FFF'
     },
     scrollContent: {
         padding: 20
@@ -756,153 +651,135 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#4F46E5'
     },
-    statusGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 12,
-        marginBottom: 25
-    },
-    statusCard: {
-        flex: 1,
-        minWidth: '45%',
-        backgroundColor: '#FFF',
-        borderRadius: 20,
+    activeClassCard: {
         padding: 16,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#F1F5F9',
-    },
-    statusIconBg: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 12
-    },
-    statusInfo: {
-        flex: 1
-    },
-    statusValue: {
-        fontSize: 20,
-        fontWeight: '800',
-        color: '#111827'
-    },
-    statusTitle: {
-        fontSize: 10,
-        color: '#9CA3AF',
-        fontWeight: '700',
-        textTransform: 'uppercase'
-    },
-    classesCard: {
         borderRadius: 24,
-        padding: 0,
+        backgroundColor: '#FFF',
+        borderLeftWidth: 6,
         marginBottom: 25,
-        overflow: 'hidden'
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
     },
-    classItem: {
+    activeClassHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    liveDotContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 18,
+        backgroundColor: '#FEF2F2',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 20,
     },
-    classTime: {
-        alignItems: 'center',
-        width: 50,
-        marginRight: 15
-    },
-    timeLabel: {
-        fontSize: 14,
-        fontWeight: '800',
-        color: '#111827'
-    },
-    statusDot: {
+    liveDot: {
         width: 8,
         height: 8,
         borderRadius: 4,
-        marginTop: 5
+        backgroundColor: '#EF4444',
+        marginRight: 6,
     },
-    classInfo: {
-        flex: 1
-    },
-    className: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: '#111827'
-    },
-    teacherName: {
-        fontSize: 12,
-        color: '#6B7280',
-    },
-    classStats: {
-        alignItems: 'flex-end'
-    },
-    classCount: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#4B5563'
-    },
-    classStatus: {
-        fontSize: 11,
+    liveLabel: {
+        fontSize: 10,
         fontWeight: 'bold',
+        color: '#EF4444',
     },
-    divider: {
-        height: 1,
-        backgroundColor: '#F3F4F6',
-        marginHorizontal: 18
+    activeClassTime: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#374151',
     },
-    insightItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 12,
-        gap: 15
+    activeClassMain: {
+        marginBottom: 16,
     },
-    insightIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    insightLabel: {
-        fontSize: 15,
-        fontWeight: '700',
-        color: '#374151'
-    },
-    insightSubLabel: {
-        fontSize: 11,
-        color: '#9CA3AF'
-    },
-    insightValue: {
-        fontSize: 18,
-        fontWeight: '800'
-    },
-    financeGrid: {
-        flexDirection: 'row',
-        gap: 12,
-        marginBottom: 25
-    },
-    financeSmallCard: {
-        flex: 1,
-        borderRadius: 20,
-        padding: 16,
-    },
-    financeLabel: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: '#6B7280',
-        marginBottom: 10
-    },
-    financeValue: {
+    activeClassName: {
         fontSize: 22,
-        fontWeight: '900',
+        fontWeight: '800',
         color: '#111827',
     },
-    financeTrend: {
-        fontSize: 10,
-        color: '#059669',
+    activeClassSub: {
+        fontSize: 14,
+        color: '#6B7280',
+        marginTop: 4,
+    },
+    activeClassFooter: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderTopWidth: 1,
+        borderTopColor: '#F3F4F6',
+        paddingTop: 12,
+    },
+    activeClassStats: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    activeClassStatsText: {
+        fontSize: 13,
+        color: '#6B7280',
+        fontWeight: '600',
+        marginLeft: 6,
+    },
+    activeButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#10B981',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 12,
+    },
+    activeButtonText: {
+        fontSize: 13,
         fontWeight: 'bold',
-        marginTop: 5
+        color: '#FFF',
+        marginRight: 4,
+    },
+    nextClassCard: {
+        padding: 20,
+        borderRadius: 24,
+        backgroundColor: '#F9FAFB',
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        marginBottom: 25,
+    },
+    nextClassRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    nextClassTimeBox: {
+        alignItems: 'center',
+        marginRight: 20,
+        paddingRight: 20,
+        borderRightWidth: 1,
+        borderRightColor: '#E5E7EB',
+    },
+    nextClassTime: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#111827',
+    },
+    nextClassDuration: {
+        fontSize: 11,
+        color: '#9CA3AF',
+        fontWeight: 'bold',
+        marginTop: 2,
+    },
+    nextClassInfo: {
+        flex: 1,
+    },
+    nextClassName: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#374151',
+    },
+    nextClassSub: {
+        fontSize: 13,
+        color: '#6B7280',
+        marginTop: 2,
     },
     alertsContainer: {
         gap: 10,
@@ -922,72 +799,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         flex: 1
     },
-    quickActionsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        paddingHorizontal: 0,
-        marginBottom: 20
-    },
-    qaButton: {
-        width: (width - 52) / 2,
-        backgroundColor: '#FFF',
-        borderRadius: 24,
-        paddingVertical: 20,
-        paddingHorizontal: 15,
-        alignItems: 'center',
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: '#F1F5F9',
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOpacity: 0.05,
-        shadowRadius: 10
-    },
-    qaIconBg: {
-        width: 54,
-        height: 54,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 12
-    },
-    qaLabel: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: '#1F2937',
-        textAlign: 'center'
-    },
-    engagementCard: {
-        borderRadius: 24,
-        padding: 20,
-        marginBottom: 25
-    },
-    engagementSubTitle: {
-        fontSize: 10,
-        fontWeight: '900',
-        color: '#9CA3AF',
-        letterSpacing: 1.5,
-        marginBottom: 15,
-        marginTop: 5
-    },
-    trendBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        backgroundColor: '#E1FCEF',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-        alignSelf: 'flex-start',
-        marginTop: 8
-    },
-    financeSubLabel: {
-        fontSize: 11,
-        color: '#9CA3AF',
-        marginTop: 8,
-        fontWeight: '500'
-    },
     noAlerts: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1004,43 +815,142 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 14
     },
-    avatarButton: {
-        elevation: 4,
-        shadowColor: '#4F46E5',
-        shadowOpacity: 0.3,
-        shadowRadius: 8
+    shortcutsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+        marginBottom: 25
     },
-    unitFilterContainer: {
+    shortcutItem: {
+        width: (width - 52) / 2,
         backgroundColor: '#FFF',
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6'
-    },
-    unitChipsScroll: {
-        paddingHorizontal: 20,
-        gap: 10
-    },
-    unitChip: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
-        backgroundColor: '#F3F4F6',
+        borderRadius: 24,
+        padding: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
         borderWidth: 1,
-        borderColor: '#E5E7EB'
+        borderColor: '#F1F5F9',
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 10
     },
-    unitChipActive: {
-        backgroundColor: '#4F46E5',
-        borderColor: '#4F46E5'
+    shortcutIcon: {
+        width: 56,
+        height: 56,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 10,
     },
-    unitChipText: {
+    shortcutLabel: {
         fontSize: 13,
-        fontWeight: '600',
-        color: '#6B7280'
+        fontWeight: '700',
+        color: '#1F2937',
     },
-    unitChipTextActive: {
-        color: '#FFF'
+    // TIMELINE STYLES
+    timelineContainer: {
+        marginBottom: 25,
     },
-    // Modal de Alunos
+    timelineItem: {
+        flexDirection: 'row',
+        minHeight: 100,
+    },
+    timelineTrack: {
+        width: 30,
+        alignItems: 'center',
+        position: 'relative',
+    },
+    timelineLine: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: 2,
+        backgroundColor: '#E5E7EB',
+    },
+    timelineLineFirst: {
+        top: 20,
+    },
+    timelineLineLast: {
+        bottom: '80%',
+    },
+    timelineDot: {
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        marginTop: 20,
+        zIndex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#FFF',
+    },
+    timelineDotInner: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#FFF',
+    },
+    timelineContent: {
+        flex: 1,
+        backgroundColor: '#FFF',
+        borderRadius: 20,
+        padding: 16,
+        marginLeft: 10,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
+    },
+    timelineHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    timelineTime: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#111827',
+    },
+    unitBadgeSmall: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 8,
+    },
+    unitBadgeTextSmall: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+    },
+    timelineName: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#374151',
+        marginBottom: 8,
+    },
+    timelineFooter: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    timelineTeacher: {
+        fontSize: 12,
+        color: '#6B7280',
+    },
+    studentCounter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    studentCounterText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#9CA3AF',
+    },
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1090,6 +1000,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 12
     },
+    studentAvatarContainer: {
+        width: 46,
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
     studentAvatar: {
         width: 36,
         height: 36,
@@ -1120,193 +1035,4 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 16
     },
-    studentAvatarContainer: {
-        width: 46,
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    // TIMELINE STYLES
-    timelineContainer: {
-        paddingHorizontal: 5,
-        marginBottom: 20
-    },
-    timelineItem: {
-        flexDirection: 'row',
-        minHeight: 120
-    },
-    timelineTrack: {
-        width: 40,
-        alignItems: 'center',
-        position: 'relative'
-    },
-    timelineLine: {
-        position: 'absolute',
-        top: 0,
-        bottom: 0,
-        width: 2,
-        backgroundColor: '#E5E7EB'
-    },
-    timelineLineFirst: {
-        top: 25
-    },
-    timelineLineLast: {
-        bottom: '75%'
-    },
-    timelineDot: {
-        width: 14,
-        height: 14,
-        borderRadius: 7,
-        marginTop: 25,
-        zIndex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: '#fff',
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 1
-    },
-    timelineDotInner: {
-        width: 6,
-        height: 6,
-        borderRadius: 3
-    },
-    timelineContent: {
-        flex: 1,
-        backgroundColor: '#fff',
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 16,
-        marginLeft: 4,
-        borderWidth: 1,
-        borderColor: '#F3F4F6',
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2
-    },
-    activeClassContent: {
-        borderColor: '#10B98130',
-        backgroundColor: '#F0FDF4'
-    },
-    classHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: 8
-    },
-    timeInfo: {
-        flexDirection: 'row',
-        alignItems: 'baseline'
-    },
-    timelineTime: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#111827',
-        marginRight: 6
-    },
-    durationText: {
-        fontSize: 12,
-        color: '#6B7280',
-        fontWeight: '500'
-    },
-    statusBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 12
-    },
-    statusBadgeText: {
-        fontSize: 10,
-        fontWeight: 'bold',
-        marginLeft: 4
-    },
-    classMainInfo: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 12
-    },
-    nameRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexWrap: 'wrap'
-    },
-    timelineClassName: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#374151',
-        marginRight: 8
-    },
-    unitBadge: {
-        paddingHorizontal: 6,
-        paddingVertical: 1,
-        borderRadius: 4,
-        borderWidth: 0.5
-    },
-    unitBadgeText: {
-        fontSize: 10,
-        fontWeight: 'bold'
-    },
-    timelineTeacherName: {
-        fontSize: 13,
-        color: '#6B7280',
-        marginTop: 2
-    },
-    occupancyInfo: {
-        backgroundColor: '#F9FAFB',
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#F3F4F6'
-    },
-    occupancyText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#4B5563',
-        marginLeft: 5
-    },
-    classActions: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderTopWidth: 1,
-        borderTopColor: '#F3F4F6',
-        paddingTop: 12
-    },
-    occupancyStatusRow: {
-        flexDirection: 'row',
-        alignItems: 'center'
-    },
-    miniDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        marginRight: 6
-    },
-    occupancyStatusText: {
-        fontSize: 12,
-        fontWeight: '500'
-    },
-    attendanceButton: {
-        backgroundColor: '#111827',
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 8
-    },
-    attendanceButtonText: {
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: 'bold',
-        marginLeft: 6
-    }
 });

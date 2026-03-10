@@ -15,6 +15,7 @@ export type Turma = {
   name: string
   unitId: string
   schedule?: string
+  schedules?: any[]
   defaultMonthlyFeeCents?: number
   defaultPaymentMethod?: string
   status: 'ATIVA' | 'INATIVA'

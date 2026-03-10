@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Card, Icon, Table, Badge, Input, Tooltip, Dropdown } from '@gingaflow/ui'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { listTeachers, Teacher, updateTeacher } from '../services/teachers'
+// import removed
 import { CreateTeacherModal } from '../components/CreateTeacherModal'
 import { formatSchedule } from '../utils/schedule'
 import { useSettings } from '../contexts/SettingsContext'
@@ -21,6 +22,15 @@ function getHashColor(str: string) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash)
   }
   return UNIT_PALETTE[Math.abs(hash) % UNIT_PALETTE.length]
+}
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(n => n.length > 0)
+    .map(n => n[0].toUpperCase())
+    .slice(0, 2)
+    .join('')
 }
 
 function TeacherUnitsCell({ units }: { units: any[] }) {
@@ -120,16 +130,11 @@ export default function TeachersList() {
     if (!window.confirm(`Deseja ${teacher.status === 'ATIVO' ? 'inativar' : 'ativar'} este professor?`)) return
 
     try {
-      await updateTeacher(teacher.id, {
-        status: teacher.status === 'ATIVO' ? 'INATIVO' : 'ATIVO',
-        // Preserve other fields
-        full_name: teacher.full_name,
-        email: teacher.email,
-        phone: teacher.phone,
-        capoeira_name: teacher.capoeira_name,
-        graduation: teacher.graduation,
-        cpf: teacher.cpf
-      })
+      const teacherToUpdate = { 
+        ...teacher, 
+        status: teacher.status === 'ATIVO' ? 'INATIVO' : 'ATIVO' 
+      }
+      await updateTeacher(teacher.id, teacherToUpdate)
       fetchData()
       toast.success(`Professor ${teacher.status === 'ATIVO' ? 'inativado' : 'ativado'} com sucesso!`)
     } catch (e: any) {
@@ -168,9 +173,27 @@ export default function TeachersList() {
             data={filteredRows.map(row => ({
               ...row,
               name: (
-                <div>
-                  <div className="font-medium cursor-pointer text-brand-600 hover:text-brand-800" onClick={() => navigate(`/teachers/${row.id}`)}>{row.full_name}</div>
-                  {row.capoeira_name && <div className="text-xs text-gray-500">{row.capoeira_name}</div>}
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="h-10 w-10 rounded-full flex items-center justify-center font-bold text-xs ring-2 ring-offset-2 flex-shrink-0"
+                    style={{ 
+                      backgroundColor: `${getHashColor(row.full_name)}15`, 
+                      color: getHashColor(row.full_name),
+                      borderColor: getHashColor(row.full_name) 
+                    }}
+                  >
+                    {getInitials(row.full_name)}
+                  </div>
+                  <div>
+                    <div className="font-bold cursor-pointer text-gray-900 dark:text-white hover:text-brand-600 transition-colors" onClick={() => navigate(`/teachers/${row.id}`)}>
+                      {row.full_name}
+                    </div>
+                    {row.capoeira_name ? (
+                      <div className="text-xs text-gray-500 italic">"{row.capoeira_name}"</div>
+                    ) : (
+                      <div className="text-[10px] text-gray-400 font-mono">{row.cpf || 'Sem CPF'}</div>
+                    )}
+                  </div>
                 </div>
               ),
               units: <TeacherUnitsCell units={row.units || []} />,

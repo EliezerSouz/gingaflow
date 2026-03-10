@@ -21,10 +21,27 @@ export async function registerGraduationRoutes(app: FastifyInstance) {
                 studentId: params.id,
                 organizationId: user.organizationId
             },
-            include: { teacher: { select: { full_name: true, notes: true } } },
+            include: {
+                teacher: { select: { full_name: true, notes: true } }
+            },
             orderBy: { date: 'desc' }
         })
-        return { data: grads }
+
+        // Manually resolve GraduationLevel names (no FK relation on the schema)
+        const gradIds = [...new Set(grads.map(g => g.newGraduationId).filter(Boolean))]
+        const levels = gradIds.length > 0
+            ? await prisma.graduationLevel.findMany({
+                where: { id: { in: gradIds }, organizationId: user.organizationId }
+              })
+            : []
+        const levelMap = Object.fromEntries(levels.map(l => [l.id, l]))
+
+        const enriched = grads.map(g => ({
+            ...g,
+            newGraduationLevel: levelMap[g.newGraduationId] || null
+        }))
+
+        return { data: enriched }
     })
 
     app.post('/students/:id/promote', async (req, reply) => {
@@ -89,16 +106,22 @@ export async function registerGraduationRoutes(app: FastifyInstance) {
         })
 
         // Atualizar Aluno (Sync Notes e currentGraduationId)
-        let newNotes = student.notes || ''
-        const gradLabel = `Graduação Inicial: ${body.newGraduationId}`
+        // Fetch the graduation name to write human-readable text in notes
+        const gradLevel = await prisma.graduationLevel.findFirst({
+            where: { id: body.newGraduationId, organizationId: user.organizationId }
+        })
+        const gradLabel = gradLevel
+            ? `Graduação Inicial: ${gradLevel.name}`
+            : `Graduação Inicial: ${body.newGraduationId}`
 
+        let newNotes = student.notes || ''
         if (newNotes.includes('Graduação Inicial:')) {
             newNotes = newNotes.replace(/Graduação Inicial: .*/, gradLabel)
         } else if (newNotes.includes('Graduação:')) {
             newNotes = newNotes.replace(/Graduação: .*/, gradLabel)
         } else {
-            if (newNotes.includes('[CAPOEIRA]')) {
-                newNotes = newNotes.replace('[CAPOEIRA]', `[CAPOEIRA]\n${gradLabel}`)
+            if (newNotes.includes('[CAPOEIRA]') || newNotes.includes('[ATIVIDADE]')) {
+                newNotes = newNotes.replace(/\[(CAPOEIRA|ATIVIDADE)\]/, `[$1]\n${gradLabel}`)
             } else {
                 newNotes += `\n${gradLabel}`
             }

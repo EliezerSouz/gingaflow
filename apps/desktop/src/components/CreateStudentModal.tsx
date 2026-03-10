@@ -23,6 +23,7 @@ import { CordaType } from '../services/settings'
 import { formatSchedule } from '../utils/schedule'
 import { maskCPF, maskPhone, maskDate, unmask } from '../utils/masks'
 import { validateCPF, validateDate, validatePhone } from '../utils/validators'
+import { http } from '../services/http'
 
 type CreateStudentModalProps = {
   studentId?: string
@@ -86,16 +87,20 @@ export function CreateStudentModal({ studentId, onClose, onSuccess }: CreateStud
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  // Teachers State
+  // External data
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [showCreateTeacher, setShowCreateTeacher] = useState(false)
+  const [allUnits, setAllUnits] = useState<any[]>([])
+  const [activityTypes, setActivityTypes] = useState<any[]>([])
 
   // Form States
   const [pessoal, setPessoal] = useState({
     full_name: '',
+    nickname: '',
     cpf: '',
     birth_date: '',
-    status: 'ATIVO'
+    status: 'ATIVO',
+    activityTypeIds: [] as string[]
   })
 
   const [contato, setContato] = useState({
@@ -130,11 +135,34 @@ export function CreateStudentModal({ studentId, onClose, onSuccess }: CreateStud
   const [capoeira, setCapoeira] = useState({
     graduation: '',
     graduation_date: '',
-    teacher: '', // Stores the teacher's name
-    unit: '',
-    group_class: '', // Stores the turma name
+    turmaIds: [] as string[],
+    scheduleIds: [] as string[],
     enrollment_date: new Date().toISOString().split('T')[0]
   })
+
+  // Derived: units filtered by selected activity types
+  const filteredUnits = React.useMemo(() => {
+    if (pessoal.activityTypeIds.length === 0) return []
+    return allUnits.filter(u =>
+      u.turmas?.some((t: any) => pessoal.activityTypeIds.includes(t.activityTypeId))
+    )
+  }, [pessoal.activityTypeIds, allUnits])
+
+  // Derived: whether any selected activity uses graduation
+  const selectedActivityObjects = activityTypes.filter(a => pessoal.activityTypeIds.includes(a.id))
+  const usaGraduacao = selectedActivityObjects.some(a => a.usaGraduacao)
+
+  // Derived: teachers from selected turmas (display only)
+  const teachersDisplay = React.useMemo(() => {
+    const names = new Set<string>()
+    capoeira.turmaIds.forEach(tid => {
+      for (const u of allUnits) {
+        const t = u.turmas?.find((t: any) => t.id === tid)
+        if (t?.teacher?.full_name) names.add(t.teacher.full_name)
+      }
+    })
+    return Array.from(names).join(', ')
+  }, [capoeira.turmaIds, allUnits])
 
   const [financeiro, setFinanceiro] = useState({
     monthly_fee: '',
@@ -148,16 +176,9 @@ export function CreateStudentModal({ studentId, onClose, onSuccess }: CreateStud
   const [history, setHistory] = useState('')
   const [originalGraduation, setOriginalGraduation] = useState('')
 
-  // Selection States for Cascading Dropdowns
+  // Legacy: keep selectedTeacherId for backward compat with auto-select logic
   const [selectedTeacherId, setSelectedTeacherId] = useState('')
-  const [selectedUnitId, setSelectedUnitId] = useState('')
-  const [selectedTurmaId, setSelectedTurmaId] = useState('')
-
   const activeTeachers = teachers.filter(t => t.status === 'ATIVO')
-  const selectedTeacher = teachers.find(t => t.id === selectedTeacherId)
-  const availableUnits = selectedTeacher?.units || []
-  const selectedUnit = availableUnits.find(u => u.id === selectedUnitId)
-  const availableTurmas = selectedUnit?.turmas || []
 
   const age = calculateAge(pessoal.birth_date)
   const isMinor = age > 0 && age < 18
@@ -216,10 +237,13 @@ export function CreateStudentModal({ studentId, onClose, onSuccess }: CreateStud
   // Load Initial Data
   useEffect(() => {
     loadTeachers()
+    loadPickerData()
     if (studentId) {
       loadStudent()
     } else {
-      // Defaults for new student
+      setPessoal({ full_name: '', nickname: '', cpf: '', birth_date: '', status: 'ATIVO', activityTypeIds: [] })
+      setCapoeira({ graduation: '', graduation_date: '', turmaIds: [], scheduleIds: [], enrollment_date: new Date().toISOString().split('T')[0] })
+      setFinanceiro({ monthly_fee: '', due_day: '', next_due_date: '', payment_method: '', financial_status: 'EM_DIA' })
       if (settings.defaultMonthlyFee) {
         setFinanceiro(prev => ({ ...prev, monthly_fee: String(settings.defaultMonthlyFee) }))
       }
@@ -229,14 +253,11 @@ export function CreateStudentModal({ studentId, onClose, onSuccess }: CreateStud
     }
   }, [studentId, isProfessor, settings])
 
-  // Auto-select logged-in professor
+  // Auto-select logged-in professor (kept for legacy backward compat)
   useEffect(() => {
     if (teachers.length > 0 && !studentId && isProfessor && auth.relatedId && !selectedTeacherId) {
       const t = teachers.find(t => t.id === auth.relatedId)
-      if (t) {
-        setSelectedTeacherId(t.id)
-        setCapoeira(prev => ({ ...prev, teacher: t.full_name }))
-      }
+      if (t) setSelectedTeacherId(t.id)
     }
   }, [teachers, isProfessor, auth.relatedId, studentId, selectedTeacherId])
 
@@ -249,56 +270,45 @@ export function CreateStudentModal({ studentId, onClose, onSuccess }: CreateStud
     }
   }, [financeiro.financial_status, financeiro.due_day])
 
-  // Apply hierarchical defaults when unit/turma selection changes
+  // If student is no longer a minor, go back to Pessoal tab (Responsável tab is hidden)
   useEffect(() => {
-    const unit = selectedUnit
-    if (selectedUnitId && !selectedTurmaId && unit) {
-      const feeCents = unit.defaultMonthlyFeeCents
-      const method = unit.defaultPaymentMethod || settings.defaultPaymentMethod
-      setFinanceiro(prev => ({
-        ...prev,
-        monthly_fee: prev.monthly_fee || (feeCents ? String(Math.round(feeCents) / 100) : (settings.defaultMonthlyFee ? String(settings.defaultMonthlyFee) : '')),
-        payment_method: prev.payment_method || (method || '')
-      }))
+    if (!isMinor && activeTab === 'responsavel') {
+      setActiveTab('pessoal')
     }
-  }, [selectedUnitId, selectedTurmaId, selectedUnit, settings.defaultMonthlyFee, settings.defaultPaymentMethod])
+  }, [isMinor])
 
+  // Auto-fill monthly fee from selected turmas
   useEffect(() => {
-    if (selectedTurmaId) {
-      const turma = availableTurmas.find(t => t.id === selectedTurmaId)
-      const feeCents = turma?.defaultMonthlyFeeCents ?? selectedUnit?.defaultMonthlyFeeCents
-      const method = turma?.defaultPaymentMethod || selectedUnit?.defaultPaymentMethod || settings.defaultPaymentMethod
-      setFinanceiro(prev => ({
-        ...prev,
-        monthly_fee: (isProfessor || !prev.monthly_fee)
-          ? (feeCents ? String(Math.round(feeCents) / 100) : (settings.defaultMonthlyFee ? String(settings.defaultMonthlyFee) : ''))
-          : prev.monthly_fee,
-        payment_method: (isProfessor || !prev.payment_method) ? (method || '') : prev.payment_method
-      }))
-    }
-  }, [selectedTurmaId, availableTurmas, selectedUnit, settings.defaultMonthlyFee, settings.defaultPaymentMethod, isProfessor])
-  // Auto-select IDs when editing if names match
-  useEffect(() => {
-    if (teachers.length > 0 && capoeira.teacher && !selectedTeacherId) {
-      const t = teachers.find(t => t.full_name === capoeira.teacher)
-      if (t) {
-        setSelectedTeacherId(t.id)
-        if (capoeira.group_class) {
-          for (const u of t.units || []) {
-            const tm = u.turmas.find(tm => tm.name === capoeira.group_class)
-            if (tm) {
-              setSelectedUnitId(u.id)
-              setSelectedTurmaId(tm.id)
-              if (!capoeira.unit) {
-                setCapoeira(prev => ({ ...prev, unit: u.name }))
-              }
-              break
-            }
-          }
+    if (capoeira.turmaIds.length > 0) {
+      let totalCents = 0
+      capoeira.turmaIds.forEach(tid => {
+        for (const u of allUnits) {
+          const t = u.turmas?.find((t: any) => t.id === tid)
+          if (t?.defaultMonthlyFeeCents) { totalCents += t.defaultMonthlyFeeCents; break }
         }
+      })
+      if (totalCents > 0) {
+        const newFee = (totalCents / 100).toFixed(2).replace('.', ',')
+        setFinanceiro(prev => ({ ...prev, monthly_fee: newFee }))
       }
     }
-  }, [teachers, capoeira.teacher, capoeira.group_class])
+  }, [capoeira.turmaIds, allUnits])
+
+  async function loadPickerData() {
+    try {
+      const [unitsRes, activityRes] = await Promise.all([
+        http<any>('/units'),
+        http<any>('/activity-types').catch(() => [])
+      ])
+      // GET /units already returns nested turmas with activityTypeId (scalar field)
+      const uData: any[] = unitsRes?.data || unitsRes || []
+      const aData = Array.isArray(activityRes) ? activityRes : (activityRes?.data || [])
+      setAllUnits(uData)
+      setActivityTypes(aData)
+    } catch (e) {
+      console.error('Erro ao carregar dados dos seletores:', e)
+    }
+  }
 
   async function loadStudent() {
     try {
@@ -318,9 +328,11 @@ export function CreateStudentModal({ studentId, onClose, onSuccess }: CreateStud
 
       setPessoal({
         full_name: s.full_name,
+        nickname: s.nickname || '',
         cpf: maskCPF(s.cpf || ''),
         birth_date: s.birth_date || '',
-        status: s.status
+        status: s.status,
+        activityTypeIds: s.activities?.map((a: any) => a.activityTypeId) || []
       })
 
       // Parse Address from [CONTATO EXTRA]
@@ -378,13 +390,23 @@ export function CreateStudentModal({ studentId, onClose, onSuccess }: CreateStud
         ...guardianAddr
       })
 
+      // Resolve graduation name: prefer relational data, then notes text
+      const currentGradId = s.currentGraduationId
+      const currentGradByUUID = currentGradId
+        ? (settings.graduations || []).find((g: any) => g.id === currentGradId)
+        : null
+      const graduationName = currentGradByUUID?.name
+        || s.graduations?.[0]?.graduation?.name
+        || s.graduations?.[0]?.newGraduationLevel?.name
+        || extract(/Graduação Inicial: (.*)/)
+        || ''
+
       setCapoeira({
-        graduation: extract(/Graduação Inicial: (.*)/),
-        graduation_date: extract(/Data Graduação: (.*)/),
-        teacher: extract(/Professor: (.*)/),
-        unit: extract(/Unidade: (.*)/),
-        group_class: extract(/Turma: (.*)/),
-        enrollment_date: s.enrollment_date
+        graduation: graduationName,
+        graduation_date: s.graduations?.[0]?.date || extract(/Data Graduação: (.*)/),
+        turmaIds: s.studentTurmas?.map((st: any) => st.turmaId) || [],
+        scheduleIds: s.schedules?.map((sc: any) => sc.id) || [],
+        enrollment_date: s.enrollment_date || new Date().toISOString().split('T')[0]
       })
 
       setFinanceiro({
@@ -519,12 +541,9 @@ Cidade: ${contato.address_city}/${contato.address_state} - CEP: ${contato.addres
 
 ${guardianInfo}
 
-[CAPOEIRA]
+[ATIVIDADE]
 Graduação Inicial: ${capoeira.graduation}
 Data Graduação: ${capoeira.graduation_date}
-Professor: ${capoeira.teacher}
-Unidade: ${capoeira.unit}
-Turma: ${capoeira.group_class}
 
 [HISTORICO_GRADUACAO]
 ${finalHistory}
@@ -540,14 +559,23 @@ Próximo Vencimento: ${financeiro.next_due_date}
 ${obs}
 `.trim()
 
+      // Resolve currentGraduationId: find the UUID of the selected graduation name
+      const selectedGradConfig = (settings.graduations || []).find((g: any) => g.name === capoeira.graduation)
+      const currentGraduationId = (selectedGradConfig as any)?.id || undefined
+
       const payload = {
         full_name: pessoal.full_name,
+        nickname: pessoal.nickname || undefined,
         cpf: unmask(pessoal.cpf),
         birth_date: pessoal.birth_date || undefined,
         email: contato.email || undefined,
         phone: unmask(contato.phone) || undefined,
         status: pessoal.status,
         enrollment_date: capoeira.enrollment_date,
+        activityTypeIds: pessoal.activityTypeIds,
+        turmaIds: capoeira.turmaIds,
+        scheduleIds: capoeira.scheduleIds,
+        currentGraduationId: currentGraduationId || null,
         notes: extraInfo
       }
 
@@ -587,29 +615,44 @@ ${obs}
                 Contato
                 {fieldErrors.phone && <span className="ml-1 text-red-500">*</span>}
               </TabsTrigger>
-              <TabsTrigger value="responsavel" current={activeTab} onChange={setActiveTab}>
-                Responsável
-                {(isMinor || fieldErrors.resp_name || fieldErrors.resp_rel || fieldErrors.resp_phone || fieldErrors.resp_cpf) && (
-                  <span className={`ml-2 inline-block h-2 w-2 rounded-full ${Object.keys(fieldErrors).some(k => k.startsWith('resp_')) ? 'bg-red-500' : 'bg-amber-500'}`} />
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="capoeira" current={activeTab} onChange={setActiveTab}>Capoeira</TabsTrigger>
+              {/* Only show Responsável tab when student IS a minor */}
+              {isMinor && (
+                <TabsTrigger value="responsavel" current={activeTab} onChange={setActiveTab}>
+                  Responsável
+                  {(fieldErrors.resp_name || fieldErrors.resp_rel || fieldErrors.resp_phone || fieldErrors.resp_cpf) && (
+                    <span className="ml-2 inline-block h-2 w-2 rounded-full bg-red-500" />
+                  )}
+                  {isMinor && !Object.keys(fieldErrors).some(k => k.startsWith('resp_')) && (
+                    <span className="ml-2 inline-block h-2 w-2 rounded-full bg-amber-500" />
+                  )}
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="atividade" current={activeTab} onChange={setActiveTab}>Atividade</TabsTrigger>
               <TabsTrigger value="financeiro" current={activeTab} onChange={setActiveTab}>Financeiro</TabsTrigger>
               <TabsTrigger value="obs" current={activeTab} onChange={setActiveTab}>Obs</TabsTrigger>
             </TabsList>
 
             <TabsContent value="pessoal" current={activeTab}>
               <div className="space-y-4">
-                <FormField label="Nome Completo" error={fieldErrors.full_name}>
-                  <Input
-                    value={pessoal.full_name}
-                    onChange={e => {
-                      setPessoal({ ...pessoal, full_name: e.target.value })
-                      if (fieldErrors.full_name) setFieldErrors({ ...fieldErrors, full_name: '' })
-                    }}
-                    placeholder="Ex: João da Silva"
-                  />
-                </FormField>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField label="Nome Completo" error={fieldErrors.full_name}>
+                    <Input
+                      value={pessoal.full_name}
+                      onChange={e => {
+                        setPessoal({ ...pessoal, full_name: e.target.value })
+                        if (fieldErrors.full_name) setFieldErrors({ ...fieldErrors, full_name: '' })
+                      }}
+                      placeholder="Ex: João da Silva"
+                    />
+                  </FormField>
+                  <FormField label="Apelido">
+                    <Input
+                      value={pessoal.nickname}
+                      onChange={e => setPessoal({ ...pessoal, nickname: e.target.value })}
+                      placeholder="Ex: Guerreiro, Leão..."
+                    />
+                  </FormField>
+                </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField label="CPF" error={fieldErrors.cpf}>
@@ -656,8 +699,46 @@ ${obs}
                   {isProfessor && <div className="mt-1 text-xs text-gray-500">Status gerenciado pela administração</div>}
                 </FormField>
 
-                <div className="rounded border border-dashed p-4 text-center text-sm text-gray-500">
-                  Foto do aluno (Em breve)
+                {/* Activity Types — chips, just like mobile */}
+                <div>
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Tipos de Atividade {isAdmin && <span className="text-gray-400">(selecione ao menos uma)</span>}
+                  </div>
+                  {activityTypes.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">Nenhuma atividade cadastrada</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {activityTypes.map(a => {
+                        const isSelected = pessoal.activityTypeIds.includes(a.id)
+                        return (
+                          <button
+                            key={a.id}
+                            type="button"
+                            disabled={!isAdmin}
+                            onClick={() => {
+                              if (!isAdmin) return
+                              setPessoal(prev => ({
+                                ...prev,
+                                activityTypeIds: isSelected
+                                  ? prev.activityTypeIds.filter(id => id !== a.id)
+                                  : [...prev.activityTypeIds, a.id]
+                              }))
+                            }}
+                            className={`px-3 py-1.5 text-sm font-semibold rounded-full border transition-all ${
+                              isSelected
+                                ? 'bg-brand-600 text-white border-brand-600'
+                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                            } ${!isAdmin ? 'opacity-60 cursor-default' : 'cursor-pointer hover:border-brand-400'}`}
+                          >
+                            {a.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {!isAdmin && pessoal.activityTypeIds.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-600">Tipo de atividade definido pelo administrador</p>
+                  )}
                 </div>
               </div>
             </TabsContent>
@@ -909,151 +990,187 @@ ${obs}
               </div>
             </TabsContent>
 
-            <TabsContent value="capoeira" current={activeTab}>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField label="Graduação Atual">
-                    <div className="relative">
-                      <Select
-                        value={capoeira.graduation}
-                        onChange={e => setCapoeira({ ...capoeira, graduation: e.target.value })}
-                        style={
-                          settings.graduations?.find(g => g.name === capoeira.graduation)?.color
-                            ? { borderLeft: `4px solid ${settings.graduations.find(g => g.name === capoeira.graduation)?.color}` }
-                            : {}
-                        }
-                      >
-                        <option value="">Selecione...</option>
-                        {(settings.graduations || [])
-                          .filter(g => g.active)
-                          .sort((a, b) => a.order - b.order)
-                          .map(g => (
-                            <option key={g.id} value={g.name}>
-                              {g.name}
-                            </option>
-                          ))}
-                      </Select>
-                      {capoeira.graduation && (() => {
-                        const g = (settings.graduations || []).find(x => x.name === capoeira.graduation)
-                        if (!g) return null
-                        return (
-                          <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-100 flex items-center gap-3">
-                            <CordaPreview grad={g} width={80} />
-                            <div className="text-sm">
-                              <div className="font-medium text-gray-900">{g.name}</div>
-                              <div className="text-xs text-gray-500">
-                                {[
-                                  g.category,
-                                  typeof g.grau === 'number' ? `Grau ${g.grau}` : null
-                                ].filter(Boolean).join(' • ')}
+            <TabsContent value="atividade" current={activeTab}>
+              <div className="space-y-5">
+
+                {/* Graduation — only if activity uses graduation */}
+                {usaGraduacao && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField label="Graduação Atual">
+                      <div className="relative">
+                        <Select
+                          value={capoeira.graduation}
+                          onChange={e => setCapoeira({ ...capoeira, graduation: e.target.value })}
+                          style={
+                            settings.graduations?.find(g => g.name === capoeira.graduation)?.color
+                              ? { borderLeft: `4px solid ${settings.graduations.find(g => g.name === capoeira.graduation)?.color}` }
+                              : {}
+                          }
+                        >
+                          <option value="">Selecione...</option>
+                          {(settings.graduations || [])
+                            .filter(g => g.active)
+                            .sort((a, b) => a.order - b.order)
+                            .map(g => (
+                              <option key={g.id} value={g.name}>{g.name}</option>
+                            ))}
+                        </Select>
+                        {capoeira.graduation && (() => {
+                          const g = (settings.graduations || []).find(x => x.name === capoeira.graduation)
+                          if (!g) return null
+                          return (
+                            <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 flex items-center gap-3">
+                              <CordaPreview grad={g} width={80} />
+                              <div className="text-sm">
+                                <div className="font-medium text-gray-900 dark:text-white">{g.name}</div>
+                                <div className="text-xs text-gray-500">
+                                  {[g.category, typeof g.grau === 'number' ? `Grau ${g.grau}` : null].filter(Boolean).join(' • ')}
+                                </div>
                               </div>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    </FormField>
+                    <FormField label="Data da Graduação">
+                      <Input
+                        type="date"
+                        value={capoeira.graduation_date}
+                        onChange={e => setCapoeira({ ...capoeira, graduation_date: e.target.value })}
+                      />
+                    </FormField>
+                  </div>
+                )}
+
+                {/* Turma enrollment — filtered by activity type, same as mobile */}
+                <div>
+                  <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Matrícula em Turmas</div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    {pessoal.activityTypeIds.length === 0
+                      ? 'Selecione um tipo de atividade na aba Pessoal para filtrar as turmas disponíveis.'
+                      : 'Selecione as turmas. Você pode se matricular em turmas de unidades diferentes.'}
+                  </p>
+
+                  {filteredUnits.length === 0 ? (
+                    <div className="text-center py-6 text-gray-400 italic text-sm">
+                      {pessoal.activityTypeIds.length === 0
+                        ? 'Nenhuma atividade selecionada'
+                        : 'Nenhuma turma encontrada para as atividades selecionadas'}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {filteredUnits.map(unit => {
+                        const unitTurmas = unit.turmas?.filter((t: any) =>
+                          pessoal.activityTypeIds.includes(t.activityTypeId)
+                        ) || []
+                        if (unitTurmas.length === 0) return null
+                        return (
+                          <div key={unit.id} className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                            {/* Unit header */}
+                            <div
+                              className="px-4 py-2 flex items-center gap-2 bg-gray-50 dark:bg-gray-800/60"
+                              style={{ borderLeft: `3px solid ${unit.color || '#6366F1'}` }}
+                            >
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: unit.color || '#6366F1' }} />
+                              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{unit.name}</span>
+                            </div>
+                            {/* Turmas */}
+                            <div className="p-3 flex flex-wrap gap-2">
+                              {unitTurmas.map((t: any) => {
+                                const isSelected = capoeira.turmaIds.includes(t.id)
+                                const schedules = t.schedules || []
+                                const schedStr = schedules
+                                  .slice()
+                                  .sort((a: any, b: any) => {
+                                    const days = ['SEG','TER','QUA','QUI','SEX','SAB','DOM']
+                                    return days.indexOf(a.dayOfWeek) - days.indexOf(b.dayOfWeek)
+                                  })
+                                  .map((s: any) => `${s.dayOfWeek} ${s.startTime}`)
+                                  .join(' · ')
+
+                                return (
+                                  <div key={t.id} className="flex flex-col gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setCapoeira(prev => ({
+                                            ...prev,
+                                            turmaIds: prev.turmaIds.filter(id => id !== t.id),
+                                            scheduleIds: prev.scheduleIds.filter(id =>
+                                              !(schedules.some((s: any) => s.id === id))
+                                            )
+                                          }))
+                                        } else {
+                                          setCapoeira(prev => ({
+                                            ...prev,
+                                            turmaIds: [...prev.turmaIds, t.id]
+                                          }))
+                                        }
+                                      }}
+                                      className={`px-3 py-2 text-sm font-semibold rounded-lg border transition-all text-left ${
+                                        isSelected
+                                          ? 'bg-brand-50 dark:bg-brand-900/20 border-brand-400 text-brand-700 dark:text-brand-300'
+                                          : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-brand-300'
+                                      }`}
+                                    >
+                                      <div>{t.name}</div>
+                                      {schedStr && <div className="text-xs font-normal opacity-70 mt-0.5">{schedStr}</div>}
+                                    </button>
+
+                                    {/* Schedule chips when turma is selected */}
+                                    {isSelected && schedules.length > 1 && (
+                                      <div className="flex flex-wrap gap-1 pl-1">
+                                        <span className="text-xs text-gray-400 self-center">Horários:</span>
+                                        {schedules
+                                          .slice()
+                                          .sort((a: any, b: any) => {
+                                            const days = ['SEG','TER','QUA','QUI','SEX','SAB','DOM']
+                                            return days.indexOf(a.dayOfWeek) - days.indexOf(b.dayOfWeek)
+                                          })
+                                          .map((s: any) => {
+                                            const isSchSelected = capoeira.scheduleIds.includes(s.id)
+                                            return (
+                                              <button
+                                                key={s.id}
+                                                type="button"
+                                                onClick={() => {
+                                                  setCapoeira(prev => ({
+                                                    ...prev,
+                                                    scheduleIds: isSchSelected
+                                                      ? prev.scheduleIds.filter(id => id !== s.id)
+                                                      : [...prev.scheduleIds, s.id]
+                                                  }))
+                                                }}
+                                                className={`px-2 py-0.5 text-xs rounded-full border transition-all ${
+                                                  isSchSelected
+                                                    ? 'bg-brand-600 text-white border-brand-600'
+                                                    : 'border-gray-300 text-gray-500 hover:border-brand-400'
+                                                }`}
+                                              >
+                                                {s.dayOfWeek} {s.startTime}
+                                              </button>
+                                            )
+                                          })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
                             </div>
                           </div>
                         )
-                      })()}
+                      })}
                     </div>
-                  </FormField>
-                  <FormField label="Data da Graduação">
-                    <Input
-                      type="date"
-                      value={capoeira.graduation_date}
-                      onChange={e => setCapoeira({ ...capoeira, graduation_date: e.target.value })}
-                    />
-                  </FormField>
-                </div>
+                  )}
 
-                <div className="flex gap-2 items-end">
-                  <div className="flex-1">
-                    <FormField label="Professor Responsável">
-                      <Select
-                        value={selectedTeacherId}
-                        onChange={e => {
-                          const tid = e.target.value
-                          setSelectedTeacherId(tid)
-                          const t = teachers.find(x => x.id === tid)
-                          setCapoeira(prev => ({
-                            ...prev,
-                            teacher: t ? t.full_name : '',
-                            unit: '',
-                            group_class: ''
-                          }))
-                          setSelectedUnitId('')
-                          setSelectedTurmaId('')
-                        }}
-                        disabled={isProfessor} // Professor cannot change teacher
-                      >
-                        <option value="">Selecione um professor</option>
-                        {activeTeachers.map(t => (
-                          <option key={t.id} value={t.id}>
-                            {t.full_name} {t.capoeira_name ? `(${t.capoeira_name})` : ''}
-                          </option>
-                        ))}
-                      </Select>
-                    </FormField>
-                  </div>
-                  <div className="pb-1">
-                    {/* Only show add teacher if admin */}
-                    {isAdmin && (
-                      <Button variant="secondary" onClick={() => setShowCreateTeacher(true)}>
-                        <Icon name="plus" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField label="Unidade">
-                    <div className="relative">
-                      <Select
-                        value={selectedUnitId}
-                        onChange={e => {
-                          const uid = e.target.value
-                          setSelectedUnitId(uid)
-                          const u = availableUnits.find(x => x.id === uid)
-                          setCapoeira(prev => ({
-                            ...prev,
-                            unit: u ? u.name : '',
-                            group_class: ''
-                          }))
-                          setSelectedTurmaId('')
-                        }}
-                        disabled={!selectedTeacherId}
-                        style={selectedUnit?.color ? { borderLeft: `4px solid ${selectedUnit.color}` } : {}}
-                      >
-                        <option value="">Selecione a unidade</option>
-                        {availableUnits.map(u => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                      </Select>
-                      {selectedUnit?.color && (
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                          <span
-                            className="block w-3 h-3 rounded-full border border-gray-200"
-                            style={{ backgroundColor: selectedUnit.color }}
-                            title={`Cor da unidade: ${selectedUnit.color}`}
-                          />
-                        </div>
-                      )}
+                  {/* Teachers display */}
+                  {teachersDisplay && (
+                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-l-4 border-blue-400">
+                      <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-0.5">Professores das Turmas Selecionadas</p>
+                      <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">{teachersDisplay}</p>
                     </div>
-                  </FormField>
-
-                  <FormField label="Turma">
-                    <Select
-                      value={selectedTurmaId}
-                      onChange={e => {
-                        const tid = e.target.value
-                        setSelectedTurmaId(tid)
-                        const t = availableTurmas.find(x => x.id === tid)
-                        setCapoeira(prev => ({ ...prev, group_class: t ? t.name : '' }))
-                      }}
-                      disabled={!selectedUnitId}
-                    >
-                      <option value="">Selecione a turma</option>
-                      {availableTurmas.map(t => (
-                        <option key={t.id} value={t.id}>{t.name} {t.schedule ? `(${formatSchedule(t.schedule)})` : ''}</option>
-                      ))}
-                    </Select>
-                  </FormField>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

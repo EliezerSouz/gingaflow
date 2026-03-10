@@ -1,0 +1,10 @@
+F:\Antigravity\capoeira-app\gingaflow\apps\desktop\src-tauri\target\debug\deps\windows_tokens-e479504ab0f59b86.d: C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\lib.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\to_tokens.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\token_stream.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\runtime.rs
+
+F:\Antigravity\capoeira-app\gingaflow\apps\desktop\src-tauri\target\debug\deps\libwindows_tokens-e479504ab0f59b86.rlib: C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\lib.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\to_tokens.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\token_stream.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\runtime.rs
+
+F:\Antigravity\capoeira-app\gingaflow\apps\desktop\src-tauri\target\debug\deps\libwindows_tokens-e479504ab0f59b86.rmeta: C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\lib.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\to_tokens.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\token_stream.rs C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\runtime.rs
+
+C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\lib.rs:
+C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\to_tokens.rs:
+C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\token_stream.rs:
+C:\Users\eliez\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-tokens-0.39.0\src\runtime.rs:

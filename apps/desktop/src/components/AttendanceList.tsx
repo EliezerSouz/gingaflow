@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Card, Button, Icon, Badge, EmptyState } from '@gingaflow/ui'
-import { Student } from '../services/students'
-import { http } from '../services/http'
+import { Student, parseStudentExtra } from '../services/students'
+import { attendanceRepository } from '../repositories/attendanceRepository'
+import { useAuth } from '../contexts/AuthContext'
 
 export type AttendanceRecord = {
   id?: string
@@ -20,6 +21,7 @@ interface AttendanceListProps {
 }
 
 export default function AttendanceList({ turmaId, students, date, onAttendanceChange }: AttendanceListProps) {
+  const { auth } = useAuth()
   const [attendance, setAttendance] = useState<Record<string, 'PRESENT' | 'ABSENT' | 'JUSTIFIED'>>({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -34,13 +36,11 @@ export default function AttendanceList({ turmaId, students, date, onAttendanceCh
       setLoading(true)
       setError(null)
       
-      const response = await http<{ data: AttendanceRecord[] }>(
-        `/attendance?turmaId=${turmaId}&date=${date}`
-      )
+      const data = await attendanceRepository.getByTurmaAndDate(turmaId, date)
       
       const attendanceMap: Record<string, 'PRESENT' | 'ABSENT' | 'JUSTIFIED'> = {}
-      response.data.forEach(record => {
-        attendanceMap[record.studentId] = record.status
+      data.forEach(record => {
+        attendanceMap[record.student_id] = record.status
       })
       
       setAttendance(attendanceMap)
@@ -56,18 +56,18 @@ export default function AttendanceList({ turmaId, students, date, onAttendanceCh
   }
 
   async function saveAttendance(studentId: string, status: 'PRESENT' | 'ABSENT' | 'JUSTIFIED') {
+    if (!auth.organizationId) return
+
     try {
       setSaving(true)
       setError(null)
       
-      await http('/attendance', {
-        method: 'POST',
-        body: JSON.stringify({
-          studentId,
-          turmaId,
-          date,
-          status
-        })
+      await attendanceRepository.save({
+        organization_id: auth.organizationId,
+        student_id: studentId,
+        turma_id: turmaId,
+        date,
+        status
       })
       
       setAttendance(prev => ({
@@ -156,7 +156,7 @@ export default function AttendanceList({ turmaId, students, date, onAttendanceCh
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <div className="font-medium text-primary">{student.full_name}</div>
-                {/* Apelido removido do tipo; manter legibilidade sem o campo inexistente */}
+                <div className="text-xs text-secondary">{parseStudentExtra(student).graduation || 'Sem graduação'}</div>
               </div>
               
               <div className="flex items-center space-x-2">

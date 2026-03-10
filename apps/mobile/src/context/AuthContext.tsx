@@ -17,25 +17,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        let mounted = true;
+
+        // Safety timeout: never block the app more than 3 seconds
+        const timeout = setTimeout(() => {
+            if (mounted && loading) {
+                console.warn('⚠️ AuthContext: timeout on storage load, proceeding without session');
+                setLoading(false);
+            }
+        }, 3000);
+
         async function loadStorageData() {
             try {
-                const [storagedUser, storagedToken] = await AsyncStorage.multiGet([
-                    '@gingaflow_user',
-                    '@gingaflow_token',
-                ]);
+                const token = await AsyncStorage.getItem('@gingaflow_token');
+                const userStr = await AsyncStorage.getItem('@gingaflow_user');
 
-                if (storagedUser[1] && storagedToken[1]) {
-                    api.defaults.headers.Authorization = `Bearer ${storagedToken[1]}`;
-                    setUser(JSON.parse(storagedUser[1]));
+                if (mounted && token && userStr) {
+                    api.defaults.headers.Authorization = `Bearer ${token}`;
+                    setUser(JSON.parse(userStr));
                 }
             } catch (e) {
-                console.error('Falha ao carregar storage', e);
+                console.error('❌ Falha ao carregar storage:', e);
             } finally {
-                setLoading(false);
+                if (mounted) {
+                    clearTimeout(timeout);
+                    setLoading(false);
+                }
             }
         }
 
         loadStorageData();
+
+        return () => {
+            mounted = false;
+            clearTimeout(timeout);
+        };
     }, []);
 
     async function signIn(email: string, pass: string) {
@@ -47,17 +63,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { token, user } = response.data;
 
         setUser(user);
-
         api.defaults.headers.Authorization = `Bearer ${token}`;
 
-        await AsyncStorage.multiSet([
-            ['@gingaflow_token', token],
-            ['@gingaflow_user', JSON.stringify(user)],
-        ]);
+        await AsyncStorage.setItem('@gingaflow_token', token);
+        await AsyncStorage.setItem('@gingaflow_user', JSON.stringify(user));
     }
 
     async function signOut() {
-        await AsyncStorage.clear();
+        await AsyncStorage.removeItem('@gingaflow_token');
+        await AsyncStorage.removeItem('@gingaflow_user');
+        delete (api.defaults.headers as any).Authorization;
         setUser(null);
     }
 

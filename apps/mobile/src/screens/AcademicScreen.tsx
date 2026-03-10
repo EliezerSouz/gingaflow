@@ -1,186 +1,127 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TextInput, TouchableOpacity } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { api } from '../services/api';
-import { Ionicons } from '@expo/vector-icons';
-import { Badge } from '../components/ui/Badge';
-import { CordaBadge } from '../components/ui/CordaBadge';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
-import StudentFormModal from '../components/StudentFormModal';
+import { useDrawer } from '../navigation/AppNavigator';
+import { Ionicons } from '@expo/vector-icons';
+import StudentsTab from '../components/academic/StudentsTab';
+import TeachersTab from '../components/academic/TeachersTab';
+import GraduationsTab from '../components/academic/GraduationsTab';
+
+type TabType = 'students' | 'teachers' | 'graduations';
 
 export default function AcademicScreen() {
-    const navigation = useNavigation<any>();
-    const [data, setData] = useState<any[]>([]);
-    const [allGraduations, setAllGraduations] = useState<any[]>([]); // New state
-    const [loading, setLoading] = useState(false);
-    const [search, setSearch] = useState('');
-    const [showModal, setShowModal] = useState(false);
-    const [editingStudentId, setEditingStudentId] = useState<string | undefined>();
+    const { openDrawer } = useDrawer();
+    const [activeTab, setActiveTab] = useState<TabType>('students');
 
-    async function loadData() {
-        try {
-            setLoading(true);
-            const params = { per_page: 100 } as any;
-            if (search) params.q = search;
-
-            // Carregar alunos e settings em paralelo
-            const [studentsRes, settingsRes] = await Promise.all([
-                api.get('/students', { params }),
-                api.get('/settings')
-            ]);
-
-            setData(studentsRes.data.data);
-            setAllGraduations(settingsRes.data.graduations || []);
-        } catch (e) {
-            console.log(e);
-        } finally {
-            setLoading(false);
+    const renderTab = () => {
+        switch (activeTab) {
+            case 'students': return <StudentsTab />;
+            case 'teachers': return <TeachersTab />;
+            case 'graduations': return <GraduationsTab />;
+            default: return <StudentsTab />;
         }
-    }
+    };
 
-    useFocusEffect(
-        useCallback(() => {
-            loadData();
-        }, [search])
-    );
+    const TabButton = ({ type, icon, label }: { type: TabType, icon: string, label: string }) => {
+        const isActive = activeTab === type;
+        return (
+            <TouchableOpacity 
+                onPress={() => setActiveTab(type)}
+                style={[styles.tabButton, isActive && styles.activeTabButton]}
+                activeOpacity={0.8}
+            >
+                <Ionicons name={icon as any} size={18} color={isActive ? '#4F46E5' : '#9CA3AF'} />
+                <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+                {isActive && <View style={styles.activeIndicator} />}
+            </TouchableOpacity>
+        );
+    };
 
-    function getInitials(name: string) {
-        if (!name) return '??';
-        return name.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase();
-    }
-
-    // Helper para achar graduação nas settings (Case Insensitive + Trim)
-    function findGraduation(name: string) {
-        if (!name) return null;
-        const search = name.trim().toLowerCase();
-        return allGraduations.find(g => g.name?.trim().toLowerCase() === search);
-    }
-
-    function handleCreateStudent() {
-        setEditingStudentId(undefined);
-        setShowModal(true);
-    }
     return (
         <ScreenContainer>
+            {/* Header */}
             <View style={styles.header}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <TouchableOpacity onPress={() => navigation.navigate('Dashboard')}>
-                        <Ionicons name="arrow-back" size={24} color="#111827" />
-                    </TouchableOpacity>
-                    <Text style={styles.title}>Alunos</Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity onPress={loadData} style={styles.iconButton}>
-                        <Ionicons name="refresh" size={20} color="#4F46E5" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleCreateStudent} style={styles.addButton}>
-                        <Ionicons name="add" size={20} color="#FFF" />
-                        <Text style={styles.addButtonText}>Novo</Text>
-                    </TouchableOpacity>
-                </View>
+                <TouchableOpacity onPress={() => openDrawer()} style={styles.menuButton}>
+                    <Ionicons name="menu" size={28} color="#4F46E5" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Acadêmico</Text>
+                <View style={{ width: 44 }} />
             </View>
 
-            <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color="#9CA3AF" style={{ marginRight: 8 }} />
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder="Buscar por nome ou CPF..."
-                    placeholderTextColor="#9CA3AF"
-                    value={search}
-                    onChangeText={setSearch}
-                    onSubmitEditing={loadData}
-                    returnKeyType="search"
-                />
+            {/* Custom Tab Bar */}
+            <View style={styles.tabBar}>
+                <TabButton type="students" icon="people" label="Alunos" />
+                <TabButton type="teachers" icon="person" label="Mestres" />
+                <TabButton type="graduations" icon="ribbon" label="Cordas" />
             </View>
 
-            {loading && <ActivityIndicator style={{ marginTop: 20 }} color="#4F46E5" />}
-
-            <FlatList
-                data={data}
-                keyExtractor={item => item.id}
-                contentContainerStyle={{ padding: 16 }}
-                ListEmptyComponent={!loading ? <Text style={styles.empty}>Nenhum aluno encontrado.</Text> : null}
-                renderItem={({ item }) => {
-                    const studentGradName = item.graduations?.[0]?.level || item.graduation_current; // Tentar pegar de onde for
-                    const gradConfig = findGraduation(studentGradName);
-
-                    // Fallback visual
-                    const gradColor = gradConfig?.colorLeft || gradConfig?.color || '#E5E7EB';
-
-                    return (
-                        <TouchableOpacity onPress={() => navigation.navigate('StudentDetails', { id: item.id })}>
-                            <View style={styles.card}>
-                                <View style={[styles.avatar, { backgroundColor: gradColor, borderWidth: 2, borderColor: '#FFF' }]}>
-                                    <Text style={[styles.avatarText, { color: gradColor === '#F3F4F6' ? '#4F46E5' : '#FFF' }]}>
-                                        {getInitials(item.full_name)}
-                                    </Text>
-                                </View>
-
-                                <View style={{ flex: 1 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                                        <Text style={styles.name}>{item.full_name}</Text>
-                                    </View>
-
-                                    <Text style={styles.cpf}>CPF: {item.cpf}</Text>
-
-                                    {studentGradName && (
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                                            <CordaBadge
-                                                graduacao={studentGradName}
-                                                size="small"
-                                                // Se achou config, usa. Se não, tenta usar o que veio no item (fallback) ou padrão
-                                                colorLeft={gradConfig?.colorLeft || gradConfig?.color}
-                                                colorRight={gradConfig?.colorRight || gradConfig?.color}
-                                                pontaLeft={gradConfig?.pontaLeft || gradConfig?.colorLeft || gradConfig?.color}
-                                                pontaRight={gradConfig?.pontaRight || gradConfig?.colorRight || gradConfig?.color}
-                                            />
-                                        </View>
-                                    )}
-
-
-                                </View>
-
-                                <View style={{ alignItems: 'flex-end' }}>
-                                    <Badge
-                                        label={item.status}
-                                        variant={item.status === 'ATIVO' ? 'success' : 'danger'}
-                                    />
-                                    <Ionicons name="chevron-forward" size={20} color="#9CA3AF" style={{ marginTop: 8 }} />
-                                </View>
-                            </View>
-                        </TouchableOpacity>
-                    );
-                }}
-            />
-
-            <StudentFormModal
-                visible={showModal}
-                studentId={editingStudentId}
-                onClose={() => setShowModal(false)}
-                onSuccess={() => {
-                    setShowModal(false);
-                    loadData();
-                }}
-            />
-        </ScreenContainer >
+            {/* Content */}
+            <View style={{ flex: 1 }}>
+                {renderTab()}
+            </View>
+        </ScreenContainer>
     );
 }
 
 const styles = StyleSheet.create({
-    header: { padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-    title: { fontSize: 24, fontWeight: 'bold', color: '#111827' },
-    iconButton: { padding: 8, borderRadius: 8, backgroundColor: '#F3F4F6' },
-    addButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4F46E5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, gap: 4 },
-    addButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
-    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 12, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', height: 44 },
-    searchInput: { flex: 1, fontSize: 16, color: '#111827' },
-    card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 16, borderRadius: 12, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
-    avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-    avatarText: { fontSize: 16, fontWeight: 'bold' },
-    name: { fontSize: 16, fontWeight: '600', color: '#111827' },
-    cpf: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-    gradBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, alignSelf: 'flex-start' },
-    gradText: { fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase' },
-    typeLabel: { fontSize: 10, color: '#9CA3AF', marginTop: 2, fontStyle: 'italic' },
-    empty: { textAlign: 'center', marginTop: 40, color: '#6B7280' }
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 15,
+        backgroundColor: '#FFF'
+    },
+    menuButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: '#F3F4F6',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#111827'
+    },
+    tabBar: {
+        flexDirection: 'row',
+        backgroundColor: '#FFF',
+        paddingHorizontal: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+        marginBottom: 5
+    },
+    tabButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        gap: 8,
+        position: 'relative'
+    },
+    activeTabButton: {
+    },
+    tabLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#9CA3AF'
+    },
+    activeTabLabel: {
+        color: '#4F46E5',
+        fontWeight: 'bold'
+    },
+    activeIndicator: {
+        position: 'absolute',
+        bottom: 0,
+        left: '20%',
+        right: '20%',
+        height: 3,
+        backgroundColor: '#4F46E5',
+        borderTopLeftRadius: 3,
+        borderTopRightRadius: 3
+    }
 });

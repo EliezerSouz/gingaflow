@@ -23,6 +23,7 @@ export type Graduation = {
 }
 
 export type SystemSettings = {
+  organizationId?: string
   groupName: string
   logoUrl: string
   themeColor: string

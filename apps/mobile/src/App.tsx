@@ -1,10 +1,16 @@
+import 'react-native-gesture-handler';
+import 'react-native-reanimated';
+
 import React from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppNavigator from './navigation/AppNavigator';
-import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
 
 function RootApp() {
     const { loading } = useAuth();
@@ -22,14 +28,16 @@ function RootApp() {
 
 export default function App() {
     return (
-        <SafeAreaProvider>
-            <NavigationContainer>
-                <AuthProvider>
-                    <StatusBar style="auto" />
-                    <RootApp />
-                </AuthProvider>
-            </NavigationContainer>
-        </SafeAreaProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaProvider>
+                <NavigationContainer>
+                    <AuthProvider>
+                        <StatusBar style="auto" />
+                        <RootApp />
+                    </AuthProvider>
+                </NavigationContainer>
+            </SafeAreaProvider>
+        </GestureHandlerRootView>
     );
 }
 

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Card, Icon, Table, Pagination, Input, Badge, Tooltip, Dropdown, type IconName } from '@gingaflow/ui'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { listStudents, updateStudent, parseStudentExtra } from '../services/students'
+import { studentRepository } from '../repositories/studentRepository'
 import { isTeacher, getTeacher, listTeachers } from '../services/teachers'
 import { listUnits, listUnitTurmas } from '../services/units'
 import { CreateStudentModal } from '../components/CreateStudentModal'
@@ -23,6 +24,11 @@ function calculateAge(birthDate: string): number {
     age--
   }
   return age
+}
+
+function getInitials(name: string) {
+  if (!name) return '??'
+  return name.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
 }
 
 const UNIT_PALETTE = [
@@ -79,16 +85,12 @@ export default function StudentsList() {
     setLoading(true)
     setError(null)
     try {
-      const res = await listStudents({
-        page: p,
-        per_page: 10,
-        q,
-        status: statusFilter || undefined
-      })
-      // Filter out teachers from the student list
-      const studentsOnly = res.data.filter(s => !isTeacher(s))
+      // Use the API directly (not the local SQLite cache) so we get
+      // currentGraduation, studentTurmas, and other enriched relations
+      const res = await listStudents({ q, status: statusFilter || undefined })
+      const studentsOnly = (res.data || []).filter((s: any) => !isTeacher(s))
       setRows(studentsOnly)
-      setMeta(res.meta)
+      setMeta({ page_count: 1 })
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -158,9 +160,8 @@ export default function StudentsList() {
     if (!window.confirm(`Deseja ${student.status === 'ATIVO' ? 'inativar' : 'ativar'} este aluno?`)) return
 
     try {
-      await updateStudent(student.id, {
-        status: student.status === 'ATIVO' ? 'INATIVO' : 'ATIVO'
-      })
+      const studentToUpdate = { ...student, status: student.status === 'ATIVO' ? 'INATIVO' : 'ATIVO' }
+      await studentRepository.save(studentToUpdate)
       fetchData()
       toast.success(`Aluno ${student.status === 'ATIVO' ? 'inativado' : 'ativado'} com sucesso!`)
     } catch (e: any) {
@@ -224,19 +225,42 @@ export default function StudentsList() {
               return {
                 ...row,
                 full_name: (
-                  <div className="flex flex-col">
-                    <span
-                      className="font-medium text-brand-600 hover:text-brand-800 cursor-pointer"
-                      onClick={() => navigate(`/students/${row.id}`)}
-                    >
-                      {row.full_name}
-                    </span>
-                    <span className="text-xs text-muted">
-                      {row.cpf}
-                      {row.birth_date && (
-                        <> • {calculateAge(row.birth_date)} anos</>
-                      )}
-                    </span>
+                  <div className="flex items-center gap-3">
+                    {/* Avatar similar to mobile */}
+                    {(() => {
+                      const gradName = extra.graduation
+                      const gradConfig = (settings.graduations || []).find(x => x.name === gradName)
+                      const gradColor = gradConfig?.color || gradConfig?.colorLeft || '#E5E7EB'
+                      
+                      return (
+                        <div 
+                          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-2 p-0.5 shadow-sm"
+                          style={{ borderColor: gradColor }}
+                        >
+                          <div 
+                             className="flex h-full w-full items-center justify-center rounded-full font-bold text-xs"
+                             style={{ backgroundColor: `${gradColor}15`, color: gradColor === '#FFFFFF' || gradColor === '#fff' ? '#4F46E5' : gradColor }}
+                          >
+                            {getInitials(row.full_name)}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                    
+                    <div className="flex flex-col">
+                      <span
+                        className="font-medium text-gray-900 dark:text-white hover:text-brand-600 cursor-pointer transition-colors"
+                        onClick={() => navigate(`/students/${row.id}`)}
+                      >
+                        {row.full_name}
+                      </span>
+                      <span className="text-xs text-muted flex items-center gap-1">
+                        {row.cpf}
+                        {row.birth_date && (
+                          <> <span className="text-gray-300 dark:text-gray-600">•</span> {calculateAge(row.birth_date)} anos</>
+                        )}
+                      </span>
+                    </div>
                   </div>
                 ),
                 group_info: (
@@ -314,11 +338,11 @@ export default function StudentsList() {
                         </button>
                       }
                       items={[
-                        {
+                        ...(row.activities?.some((a: any) => a.activityType?.usaGraduacao) ? [{
                           label: 'Graduar',
                           icon: 'medal' as IconName,
                           onClick: () => setPromoteStudentId(row.id)
-                        },
+                        }] : []),
                         {
                           label: 'Editar cadastro',
                           icon: 'edit' as IconName,

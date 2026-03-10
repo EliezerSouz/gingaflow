@@ -84,7 +84,8 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
         notes: t.notes,
         userId: t.userId,
         linkedEmail: t.user?.email,
-        units: Object.values(unitsMap)
+        units: Object.values(unitsMap),
+        organizationId: t.organizationId
       }
     })
 
@@ -172,7 +173,8 @@ export async function registerTeacherRoutes(app: FastifyInstance) {
       notes: teacher.notes,
       userId: teacher.userId,
       linkedEmail: teacher.user?.email,
-      units: Object.values(unitsMap)
+      units: Object.values(unitsMap),
+      organizationId: teacher.organizationId
     }
   })
 

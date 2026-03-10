@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { PageHeader, Button, Icon, Modal, FormField, Input, Select, Card, Badge } from '@gingaflow/ui'
 import { listUnits, createUnit, updateUnit, listUnitTurmas, createTurma, updateTurma, Unit, Turma } from '../services/units'
+import { unitRepository } from '../repositories/unitRepository'
+import { turmaRepository } from '../repositories/turmaRepository'
 import { useSettings } from '../contexts/SettingsContext'
 import { Graduation, CordaType } from '../services/settings'
 import { ScheduleInput } from '../components/ScheduleInput'
@@ -66,8 +68,8 @@ export function AcademicSettings() {
   async function loadUnits() {
     setLoading(true)
     try {
-      const res = await listUnits()
-      setUnits(res.data)
+      const res = await unitRepository.getAll()
+      setUnits(res)
     } catch (e) {
       console.error(e)
     } finally {
@@ -149,18 +151,30 @@ export function AcademicSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <Button onClick={handleCreateUnit}>
-          <Icon name="plus" className="mr-2" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Unidades & Turmas</h1>
+          <p className="text-sm text-gray-500">Gerencie as unidades e turmas do seu grupo de capoeira.</p>
+        </div>
+        <Button onClick={handleCreateUnit} className="shadow-sm">
+          <Icon name="plus" className="mr-2 h-4 w-4" />
           Nova Unidade
         </Button>
       </div>
 
       {loading ? (
-        <div className="text-center py-8">Carregando...</div>
+        <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-gray-800 rounded-lg border border-dashed dark:border-gray-700">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600 mb-4"></div>
+          <p className="text-gray-500">Carregando unidades...</p>
+        </div>
       ) : units.length === 0 ? (
-        <div className="text-center py-8 text-muted border-2 border-dashed rounded-lg">
-          Nenhuma unidade cadastrada. Comece criando uma!
+        <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-gray-800 rounded-lg border-2 border-dashed dark:border-gray-200 dark:border-gray-700">
+           <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-full mb-4">
+             <Icon name="dashboard" className="h-8 w-8 text-gray-400" />
+           </div>
+           <h3 className="text-lg font-medium text-gray-900 dark:text-white">Nenhuma unidade cadastrada</h3>
+           <p className="text-gray-500 mb-6">Comece criando sua primeira unidade de treino.</p>
+           <Button variant="secondary" onClick={handleCreateUnit}>Criar Unidade</Button>
         </div>
       ) : (
         <div className="grid gap-6">
@@ -466,8 +480,8 @@ function UnitCard({ unit, onEdit, onCreateTurma, onEditTurma }: {
   const fetchTurmas = async () => {
     setLoading(true)
     try {
-      const res = await listUnitTurmas(unit.id)
-      setTurmas(res.data)
+      const res = await turmaRepository.getByUnit(unit.id)
+      setTurmas(res)
     } catch (e) {
       console.error(e)
     } finally {
@@ -484,52 +498,93 @@ function UnitCard({ unit, onEdit, onCreateTurma, onEditTurma }: {
   }, [unit.id])
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border dark:border-gray-700 shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border dark:border-gray-700 shadow-sm overflow-hidden transition-all hover:shadow-md">
       {unit.color && <div className="h-1.5 w-full" style={{ backgroundColor: unit.color }} />}
-      <div className="p-4 border-b bg-gray-50 dark:bg-gray-700/50 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-full border bg-white">
-            <span style={{ color: unit.color || '#4B5563' }}>
-              <Icon name="dashboard" />
-            </span>
+      <div className="p-5 border-b flex items-start justify-between">
+        <div className="flex items-start gap-4">
+          <div 
+            className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border-2 p-1.5 shadow-sm"
+            style={{ borderColor: unit.color || '#E5E7EB' }}
+          >
+            <div 
+               className="flex h-full w-full items-center justify-center rounded-lg"
+               style={{ backgroundColor: `${unit.color || '#4B5563'}15`, color: unit.color || '#4B5563' }}
+            >
+              <Icon name="dashboard" className="h-6 w-6" />
+            </div>
           </div>
           <div>
-            <h3 className="font-medium text-primary">{unit.name}</h3>
-            {unit.address && <p className="text-sm text-muted">{unit.address}</p>}
+            <div className="flex items-center gap-3 mb-1">
+               <h3 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">{unit.name}</h3>
+               {unit.status && (
+                 <Badge variant={unit.status === 'ATIVA' ? 'success' : 'danger'}>
+                   {unit.status}
+                 </Badge>
+               )}
+            </div>
+            {unit.address ? (
+              <p className="text-sm text-gray-500 flex items-center gap-1.5">
+                <Icon name="home" className="h-3.5 w-3.5" />
+                {unit.address}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400 italic">Sem endereço cadastrado</p>
+            )}
           </div>
-          {unit.status === 'INATIVA' && (
-            <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">Inativa</span>
-          )}
         </div>
-        <Button variant="ghost" size="sm" onClick={onEdit}>
-          <Icon name="edit" />
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={onEdit} className="h-9 w-9 p-0 rounded-full hover:bg-gray-100">
+            <Icon name="edit" className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       
-      <div className="p-4">
+      <div className="p-5 bg-gray-50/50 dark:bg-gray-900/10">
         <div className="flex items-center justify-between mb-4">
-          <h4 className="text-sm font-medium text-secondary">Turmas ({turmas.length})</h4>
-          <Button variant="secondary" size="sm" onClick={onCreateTurma}>
-            <Icon name="plus" className="w-3 h-3 mr-1" />
-            Adicionar Turma
-          </Button>
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Turmas</h4>
+            <span className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+               {turmas.length}
+            </span>
+          </div>
+          <button 
+            onClick={onCreateTurma}
+            className="text-xs font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400 flex items-center gap-1 transition-colors"
+          >
+            <Icon name="plus" className="h-3 w-3" />
+            ADICIONAR TURMA
+          </button>
         </div>
 
         {loading ? (
-          <div className="text-sm text-muted">Carregando turmas...</div>
+          <div className="text-xs text-gray-400 animate-pulse">Carregando turmas...</div>
         ) : turmas.length === 0 ? (
-          <p className="text-sm text-muted italic">Nenhuma turma cadastrada nesta unidade.</p>
+          <div className="bg-white dark:bg-gray-800/50 rounded-lg border border-dashed dark:border-gray-700 p-6 flex flex-col items-center justify-center text-center">
+            <p className="text-sm text-gray-400 italic">Nenhuma turma cadastrada nesta unidade.</p>
+          </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {turmas.map(turma => (
-              <div key={turma.id} className="flex items-center justify-between p-3 rounded border hover:border-brand-300 transition-colors group">
-                <div>
-                  <div className="font-medium text-primary text-sm">{turma.name}</div>
-                  <div className="text-xs text-muted">{formatSchedule(turma.schedule)}</div>
+              <div 
+                key={turma.id} 
+                className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-brand-500/50 hover:shadow-sm transition-all group cursor-default"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-400 group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
+                    <Icon name="calendar" className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900 dark:text-white text-sm">{turma.name}</div>
+                    <div className="text-[11px] text-gray-500 uppercase font-medium">{formatSchedule(turma.schedule)}</div>
+                  </div>
                 </div>
-                <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100" onClick={() => onEditTurma(turma)}>
-                  <Icon name="edit" className="w-3 h-3" />
-                </Button>
+                <button 
+                  onClick={() => onEditTurma(turma)}
+                  className="p-1.5 text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 opacity-0 group-hover:opacity-100 transition-all rounded-full hover:bg-brand-50"
+                  title="Editar turma"
+                >
+                  <Icon name="edit" className="h-3.5 w-3.5" />
+                </button>
               </div>
             ))}
           </div>
@@ -561,8 +616,8 @@ function UnitModal({ unit, onClose, onSuccess }: { unit: Unit | null, onClose: (
         defaultMonthlyFeeCents: formData.defaultMonthlyFee ? Math.round(Number(formData.defaultMonthlyFee) * 100) : undefined,
         defaultPaymentMethod: formData.defaultPaymentMethod || undefined
       }
-      if (unit) await updateUnit(unit.id, payload as any)
-      else await createUnit(payload as any)
+      if (unit) await unitRepository.save({ ...payload, id: unit.id } as any)
+      else await unitRepository.save(payload as any)
       onSuccess()
     } catch (e) {
       console.error(e)
@@ -680,8 +735,8 @@ function TurmaModal({ unitId, turma, onClose, onSuccess }: { unitId: string, tur
         defaultMonthlyFeeCents: formData.defaultMonthlyFee ? Math.round(Number(formData.defaultMonthlyFee) * 100) : undefined,
         defaultPaymentMethod: formData.defaultPaymentMethod || undefined
       }
-      if (turma) await updateTurma(turma.id, payload as any)
-      else await createTurma(payload as any)
+      if (turma) await turmaRepository.save({ ...payload, id: turma.id } as any)
+      else await turmaRepository.save(payload as any)
       onSuccess()
     } catch (e: any) {
       console.error('Erro ao salvar turma:', e)

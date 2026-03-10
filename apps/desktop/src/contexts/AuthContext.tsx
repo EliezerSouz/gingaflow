@@ -7,6 +7,7 @@ export type AuthState = {
   token: string | null
   role: Role | null
   name: string | null
+  organizationId: string | null
   relatedId: string | null
   loading: boolean
 }
@@ -15,7 +16,7 @@ const AuthContext = createContext<{
   auth: AuthState
   setAuth: React.Dispatch<React.SetStateAction<AuthState>>
 }>({
-  auth: { token: null, role: null, name: null, relatedId: null, loading: false },
+  auth: { token: null, role: null, name: null, organizationId: null, relatedId: null, loading: false },
   setAuth: () => {}
 })
 
@@ -26,7 +27,7 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthState>(() => {
     const token = localStorage.getItem('token')
-    return { token, role: null, name: null, relatedId: null, loading: !!token }
+    return { token, role: null, name: null, organizationId: null, relatedId: null, loading: !!token }
   })
 
   useEffect(() => {
@@ -38,11 +39,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     me(auth.token)
       .then(user => {
         if (cancelled) return
-        setAuth(a => ({ ...a, role: user.role, name: user.name, relatedId: user.relatedId, loading: false }))
+        setAuth(a => ({ 
+          ...a, 
+          role: user.role, 
+          name: user.name, 
+          organizationId: user.organizationId,
+          relatedId: user.relatedId, 
+          loading: false 
+        }))
       })
       .catch(() => {
         if (cancelled) return
-        setAuth({ token: null, role: null, name: null, relatedId: null, loading: false })
+        setAuth({ token: null, role: null, name: null, organizationId: null, relatedId: null, loading: false })
         localStorage.removeItem('token')
       })
     return () => {

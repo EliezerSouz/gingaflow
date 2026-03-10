@@ -16,11 +16,13 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('dados')
-  const [access, setAccess] = useState<{ createAccount: boolean; password: string; confirmPassword: string }>({
-    createAccount: false,
-    password: '',
-    confirmPassword: ''
+  const [access, setAccess] = useState({ 
+    createAccount: false, 
+    role: 'PROFESSOR',
+    password: '', 
+    confirmPassword: '' 
   })
+  const [hasUser, setHasUser] = useState(false)
   const { settings } = useSettings()
   
   const [formData, setFormData] = useState<Omit<Teacher, 'id'>>({
@@ -30,13 +32,15 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
     graduation: '',
     phone: '',
     email: '',
-    status: 'ATIVO'
+    status: 'ATIVO',
+    notes: ''
   })
 
   // Units and Turmas management
   const [units, setUnits] = useState<Unit[]>([])
   const [unitTurmas, setUnitTurmas] = useState<Record<string, Turma[]>>({})
   const [selectedTurmas, setSelectedTurmas] = useState<string[]>([])
+  const [selectedSchedules, setSelectedSchedules] = useState<string[]>([])
   const [loadingUnits, setLoadingUnits] = useState(false)
 
   // Load teacher data if editing
@@ -50,25 +54,38 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
     if (!teacherId) return
     setLoading(true)
     try {
-      const teacher = await getTeacher(teacherId)
+      const teacherData = await getTeacher(teacherId)
       setFormData({
-        full_name: teacher.full_name,
-        cpf: teacher.cpf,
-        capoeira_name: teacher.capoeira_name,
-        graduation: teacher.graduation,
-        phone: teacher.phone,
-        email: teacher.email,
-        status: teacher.status
+        full_name: teacherData.full_name,
+        cpf: teacherData.cpf || '',
+        capoeira_name: teacherData.nickname || teacherData.capoeira_name || '',
+        graduation: teacherData.graduation,
+        phone: teacherData.phone || '',
+        email: teacherData.email || '',
+        status: teacherData.status,
+        notes: teacherData.notes || ''
       })
+
+      setHasUser(!!teacherData.userId)
+      if (teacherData.userId) {
+        setAccess(prev => ({ ...prev, createAccount: true }))
+      }
 
       // Load assignments
       const currentTurmas: string[] = []
-      teacher.units?.forEach(u => {
+      const currentSchedules: string[] = []
+      teacherData.units?.forEach(u => {
         u.turmas.forEach(t => {
           currentTurmas.push(t.id)
+          t.schedules?.forEach((s: any) => {
+            if (s.teacherId === teacherId || (s.teacher && (s.teacher.id === teacherId))) {
+              currentSchedules.push(s.id)
+            }
+          })
         })
       })
       setSelectedTurmas(currentTurmas)
+      setSelectedSchedules(currentSchedules)
     } catch (e) {
       console.error('Erro ao carregar professor', e)
       setError('Erro ao carregar dados do professor')
@@ -112,6 +129,14 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
     )
   }
 
+  function toggleSchedule(scheduleId: string) {
+    setSelectedSchedules(prev => 
+      prev.includes(scheduleId) 
+        ? prev.filter(id => id !== scheduleId)
+        : [...prev, scheduleId]
+    )
+  }
+
   async function handleSubmit() {
     if (!formData.full_name) {
       setError('Nome é obrigatório')
@@ -130,18 +155,18 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
       return
     }
 
-    if (access.createAccount && !teacherId) {
+    if (access.createAccount) {
       if (!formData.email) {
         setError('Email é obrigatório para criar conta de acesso')
         setActiveTab('dados')
         return
       }
-      if (!access.password || access.password.length < 6) {
+      if (!hasUser && (!access.password || access.password.length < 6)) {
         setError('Senha deve ter no mínimo 6 caracteres')
         setActiveTab('acesso')
         return
       }
-      if (access.password !== access.confirmPassword) {
+      if (access.password && access.password !== access.confirmPassword) {
         setError('Senhas não conferem')
         setActiveTab('acesso')
         return
@@ -151,31 +176,20 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
     setLoading(true)
     setError(null)
     try {
-      let currentTeacherId = teacherId
-
-      if (teacherId) {
-        // Update
-        await updateTeacher(teacherId, formData)
-      } else {
-        // Create
-        const teacher = await createTeacher(formData)
-        currentTeacherId = teacher.id
-        
-        // Create User Access (only on create for now)
-        if (access.createAccount) {
-          await createUser({
-            name: formData.full_name,
-            email: formData.email!,
-            password: access.password,
-            role: 'PROFESSOR',
-            relatedId: teacher.id
-          })
-        }
+      const payload = {
+        ...formData,
+        nickname: formData.capoeira_name,
+        turmaIds: selectedTurmas,
+        scheduleIds: selectedSchedules,
+        createAccount: access.createAccount && !hasUser,
+        role: access.role,
+        password: access.password || undefined
       }
 
-      // Link Turmas (for both create and update)
-      if (currentTeacherId) {
-        await updateTeacherAssignments(currentTeacherId, selectedTurmas)
+      if (teacherId) {
+        await updateTeacher(teacherId, payload)
+      } else {
+        await createTeacher(payload)
       }
 
       onSuccess()
@@ -200,6 +214,7 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
         <Tabs value={activeTab} onChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="dados" current={activeTab} onChange={setActiveTab}>Dados Pessoais</TabsTrigger>
+            <TabsTrigger value="acesso" current={activeTab} onChange={setActiveTab}>Acesso ao Sistema</TabsTrigger>
             <TabsTrigger value="turmas" current={activeTab} onChange={setActiveTab}>Turmas Atendidas</TabsTrigger>
           </TabsList>
 
@@ -280,6 +295,69 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
                   />
                 </FormField>
               </div>
+
+              <FormField label="Observações">
+                <textarea
+                  className="w-full rounded border border-gray-300 p-2 text-sm focus:ring-brand-500 focus:border-brand-500"
+                  rows={3}
+                  value={formData.notes || ''}
+                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Informações adicionais..."
+                />
+              </FormField>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="acesso" current={activeTab}>
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <input 
+                  type="checkbox"
+                  id="createAccount"
+                  checked={access.createAccount}
+                  onChange={e => setAccess({ ...access, createAccount: e.target.checked })}
+                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <label htmlFor="createAccount" className="text-sm font-medium text-gray-700">
+                  {hasUser ? 'Este professor já possui acesso habilitado' : 'Habilitar acesso ao aplicativo'}
+                </label>
+              </div>
+
+              {(access.createAccount || hasUser) && (
+                <div className="space-y-4 pt-4 border-t">
+                  <FormField label="Nível de Acesso">
+                    <Select
+                      value={access.role}
+                      onChange={e => setAccess({ ...access, role: e.target.value })}
+                    >
+                      <option value="PROFESSOR">Professor (acesso limitado)</option>
+                      <option value="ADMIN">Administrador (acesso total)</option>
+                    </Select>
+                  </FormField>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField label={hasUser ? "Redefinir Senha" : "Senha Temporária"}>
+                      <Input 
+                        type="password"
+                        value={access.password}
+                        onChange={e => setAccess({ ...access, password: e.target.value })}
+                        placeholder={hasUser ? "Deixe em branco para não alterar" : "Mínimo 6 caracteres"}
+                      />
+                    </FormField>
+                    <FormField label="Confirmar Senha">
+                      <Input 
+                        type="password"
+                        value={access.confirmPassword}
+                        onChange={e => setAccess({ ...access, confirmPassword: e.target.value })}
+                        placeholder="Repita a senha"
+                      />
+                    </FormField>
+                  </div>
+                  <p className="text-xs text-gray-500 italic">
+                    O professor usará o email ({formData.email || 'não cadastrado'}) como login.
+                  </p>
+                </div>
+              )}
             </div>
           </TabsContent>
 
@@ -311,16 +389,57 @@ export function CreateTeacherModal({ teacherId, onClose, onSuccess }: Props) {
                       ) : (
                         <div className="grid grid-cols-2 gap-2">
                           {activeTurmas.map(turma => (
-                            <label key={turma.id} className="flex items-center space-x-2 text-sm p-2 hover:bg-gray-50 rounded cursor-pointer">
-                              <input 
-                                type="checkbox"
-                                checked={selectedTurmas.includes(turma.id)}
-                                onChange={() => toggleTurma(turma.id)}
-                                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                              />
-                              <span>{turma.name}</span>
-                              <span className="text-xs text-gray-400">({formatSchedule(turma.schedule)})</span>
-                            </label>
+                            <div key={turma.id} className="space-y-2 rounded border bg-gray-50 p-2">
+                              <label className="flex items-center space-x-2 text-sm font-medium cursor-pointer">
+                                <input 
+                                  type="checkbox"
+                                  checked={selectedTurmas.includes(turma.id)}
+                                  onChange={() => toggleTurma(turma.id)}
+                                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                />
+                                <span>{turma.name}</span>
+                              </label>
+                              
+                              <div className="pl-6 space-y-1">
+                                {turma.schedules?.map((s: any) => {
+                                  // A schedule belongs to another teacher → block selection (mirrors mobile)
+                                  const takenByOther = s.teacher && s.teacher.id !== teacherId
+                                  const otherName = takenByOther
+                                    ? (s.teacher.nickname || s.teacher.capoeira_name || s.teacher.full_name)
+                                    : null
+                                  return (
+                                    <label
+                                      key={s.id}
+                                      className={`flex items-center space-x-2 text-xs ${
+                                        takenByOther
+                                          ? 'text-gray-400 cursor-not-allowed opacity-60'
+                                          : 'text-gray-600 cursor-pointer hover:text-brand-600'
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={takenByOther ? false : selectedSchedules.includes(s.id)}
+                                        onChange={() => { if (!takenByOther) toggleSchedule(s.id) }}
+                                        disabled={!!takenByOther}
+                                        className="rounded-full border-gray-300 text-brand-500 focus:ring-brand-400 disabled:opacity-40"
+                                      />
+                                      <span className="font-bold w-8">{s.dayOfWeek}</span>
+                                      <span>{s.startTime}</span>
+                                      {takenByOther && (
+                                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                          🔒 {otherName}
+                                        </span>
+                                      )}
+                                    </label>
+                                  )
+                                })}
+                                {!turma.schedules?.length && (
+                                  <span className="text-[10px] text-gray-400 italic">
+                                    {formatSchedule(turma.schedule)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           ))}
                         </div>
                       )}

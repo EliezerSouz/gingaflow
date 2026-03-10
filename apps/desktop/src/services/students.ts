@@ -3,6 +3,7 @@ import { http } from './http'
 export type Student = {
   id: string
   full_name: string
+  nickname?: string
   cpf: string
   birth_date?: string
   email?: string
@@ -11,6 +12,10 @@ export type Student = {
   status: string
   notes?: string
   currentGraduationId?: string
+  activities?: any[]
+  studentTurmas?: any[]
+  graduations?: any[]
+  payments?: any[]
 }
 
 export async function listStudents(params: { 
@@ -76,27 +81,46 @@ export async function getGraduations(id: string) {
 
 export function parseStudentExtra(student: Student) {
   const notes = student.notes || ''
-  
-  // Capoeira
-  const teacherMatch = notes.match(/Professor\s*:\s*(.*)/i)
-  const classMatch = notes.match(/Turma\s*:\s*(.*)/i)
-  const unitMatch = notes.match(/Unidade\s*:\s*(.*)/i)
-  const graduationMatch = notes.match(/Graduação Inicial: (.*)/)
-  
-  // Responsável
-  const respNameMatch = notes.match(/\[RESPONSÁVEL\][\s\S]*?Nome: (.*)/)
-  const respCpfMatch = notes.match(/\[RESPONSÁVEL\][\s\S]*?CPF: (.*)/)
-  const respRelMatch = notes.match(/\[RESPONSÁVEL\][\s\S]*?Parentesco: (.*)/)
-  const respPhoneMatch = notes.match(/\[RESPONSÁVEL\][\s\S]*?Telefone: (.*)/)
 
-  // Financeiro
-  const nextDueDateMatch = notes.match(/Próximo Vencimento: (.*)/)
-  const dueDayMatch = notes.match(/Vencimento: Dia (\d{1,2})/)
+  // ── Priority 1: Relational data (new system) ──────────────────────────────
+  const turmaLinks: any[] = (student as any).studentTurmas || []
+  const turmaNames   = turmaLinks.map((st: any) => st.turma?.name   || '').filter(Boolean)
+  const unitNames    = [...new Set(turmaLinks.map((st: any) => st.turma?.unit?.name  || '').filter(Boolean))]
+  const teacherNames = [...new Set(turmaLinks.map((st: any) =>
+    st.turma?.teacher?.full_name || st.turma?.teacher?.nickname || ''
+  ).filter(Boolean))]
+
+  // Graduation resolution (most reliable → least reliable):
+  //  1. currentGraduation (Prisma include object) → name
+  //  2. level field (API-enriched on graduations[0])
+  //  3. newGraduationLevel.name (from our manual batch lookup)
+  //  4. graduations[0].graduation?.name (if deep relation somehow present)
+  //  5. Legacy notes text
+  const currentGraduationObj: any = (student as any).currentGraduation
+  const graduationArr: any[] = (student as any).graduations || []
+  const latestGrad = graduationArr.length > 0 ? graduationArr[0] : null
+  const graduationRelational =
+    (student as any).level ||          // API enriches this: currentGraduation?.name (most reliable)
+    currentGraduationObj?.name ||
+    latestGrad?.level ||
+    latestGrad?.newGraduationLevel?.name ||
+    latestGrad?.graduation?.name ||
+    ''
+
+  // ── Priority 2: Notes-based legacy parsing (old records) ─────────────────
+  const teacherMatch        = notes.match(/Professor\s*:\s*(.*)/i)
+  const classMatch          = notes.match(/Turma\s*:\s*(.*)/i)
+  const unitMatch           = notes.match(/Unidade\s*:\s*(.*)/i)
+  const respMatchMobile     = notes.match(/\[RESPONSÁVEL\]\r?\nNome: (.*)\r?\nCPF: (.*)\r?\nParentesco: (.*)\r?\nTelefone: (.*)/)
+  const gradMatchMobile     = notes.match(/\[(?:CAPOEIRA|ATIVIDADE)\]\r?\nGraduação Inicial: (.*)/)
+  const graduationLegacy    = notes.match(/Graduação Inicial: (.*)/)
+  const finMatchMobile      = notes.match(/\[FINANCEIRO\]\r?\nMensalidade: (.*)\r?\nVencimento: Dia (.*)\r?\nForma Pagamento: (.*)/)
+  const dueDayMatch         = notes.match(/Vencimento: Dia (\d{1,2})/)
   const financialStatusMatch = notes.match(/Situação: (.*)/)
+  const nextDueDateMatch    = notes.match(/Próximo Vencimento: (.*)/)
 
-  // Histórico de Graduação
-  const historyBlockMatch = notes.match(/\[HISTÓRICO_GRADUAÇÃO\]([\s\S]*?)(\[|$)/)
-  const graduation_history = historyBlockMatch 
+  const historyBlockMatch = notes.match(/\[HISTORICO_GRADUACAO\]([\s\S]*?)(\[|$)/)
+  const graduation_history = historyBlockMatch
     ? historyBlockMatch[1].trim().split('\n').map(line => {
         const [date, graduation] = line.split('|')
         return { date: date?.trim(), graduation: graduation?.trim() }
@@ -118,31 +142,44 @@ export function parseStudentExtra(student: Student) {
     let targetDay = targetDayThisMonth
     if (candidate <= today) {
       targetMonth = month + 1
-      if (targetMonth > 11) {
-        targetMonth = 0
-        targetYear++
-      }
+      if (targetMonth > 11) { targetMonth = 0; targetYear++ }
       const daysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate()
       targetDay = Math.min(dueDay, daysInTargetMonth)
     }
-    const d = new Date(targetYear, targetMonth, targetDay)
-    return d.toISOString().split('T')[0]
+    return new Date(targetYear, targetMonth, targetDay).toISOString().split('T')[0]
   }
 
-  const computedNextDueDate = computeNextDueDateFromDay(dueDayMatch?.[1])
+  const storedNextDueDate  = nextDueDateMatch?.[1]?.trim() || ''
+  const computedNextDueDate = computeNextDueDateFromDay(finMatchMobile?.[2] || dueDayMatch?.[1])
+
+  // ── Merge: relational data wins over legacy notes ─────────────────────────
+  const resolvedUnit    = unitNames.join(', ')    || unitMatch?.[1]    || ''
+  const resolvedTurma   = turmaNames.join(', ')   || classMatch?.[1]   || ''
+  const resolvedTeacher = teacherNames.join(', ') || teacherMatch?.[1] || ''
+  const resolvedGrad    = graduationRelational    || gradMatchMobile?.[1] || graduationLegacy?.[1] || ''
 
   return {
-    teacher: teacherMatch?.[1] || '',
-    turma: classMatch?.[1] || '',
-    unit: unitMatch?.[1] || '',
-    graduation: student.currentGraduationId || graduationMatch?.[1] || '',
-    respName: respNameMatch?.[1] || '',
-    respCpf: respCpfMatch?.[1] || '',
-    respRel: respRelMatch?.[1] || '',
-    respPhone: respPhoneMatch?.[1] || '',
-    nextDueDate: nextDueDateMatch?.[1] || computedNextDueDate || '',
-    dueDay: dueDayMatch?.[1] || '',
+    teacher:      resolvedTeacher,
+    turma:        resolvedTurma,
+    group_class:  resolvedTurma,
+    unit:         resolvedUnit,
+    graduation:   resolvedGrad,
+    responsible: respMatchMobile ? {
+      name:         respMatchMobile[1],
+      cpf:          respMatchMobile[2],
+      relationship: respMatchMobile[3],
+      phone:        respMatchMobile[4]?.trim() || ''
+    } : null,
+    financeiro: finMatchMobile ? {
+      mensalidade:   finMatchMobile[1],
+      vencimentoDia: finMatchMobile[2]?.trim(),
+      metodo:        finMatchMobile[3]
+    } : null,
+    nextDueDate:     storedNextDueDate || computedNextDueDate,
+    next_due_date:   storedNextDueDate || computedNextDueDate,
+    dueDay:          finMatchMobile?.[2] || dueDayMatch?.[1] || '',
     financialStatus: financialStatusMatch?.[1] || '',
     graduation_history
   }
 }
+

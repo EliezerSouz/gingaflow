@@ -15,22 +15,32 @@ export async function login(email: string, password: string) {
     headers: defaultHeaders,
     body: JSON.stringify({ email, password })
   })
+  const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.message || 'Falha ao entrar')
+    throw new Error(data.message || data.code || 'Falha ao entrar')
   }
-  return res.json()
+  return data
 }
 
 export async function me(token: string) {
-  const res = await fetch(`${API_BASE}/me`, {
-    headers: {
-      ...defaultHeaders,
-      Authorization: `Bearer ${token}`
+  try {
+    const res = await fetch(`${API_BASE}/me`, {
+      headers: {
+        ...defaultHeaders,
+        Authorization: `Bearer ${token}`
+      }
+    })
+    if (!res.ok) throw new Error('Não autenticado')
+    const user = await res.json()
+    localStorage.setItem('user_cache', JSON.stringify(user))
+    return user
+  } catch (err) {
+    const cached = localStorage.getItem('user_cache')
+    if (cached) {
+      return JSON.parse(cached)
     }
-  })
-  if (!res.ok) throw new Error('Não autenticado')
-  return res.json()
+    throw err
+  }
 }
 
 export async function createUser(data: { name: string; email: string; password: string; role: 'ADMIN' | 'PROFESSOR'; relatedId?: string }) {

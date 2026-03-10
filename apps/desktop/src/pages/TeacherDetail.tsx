@@ -43,11 +43,13 @@ export default function TeacherDetail() {
       let allStudents: any[] = []
       let page = 1
       let hasMore = true
-
       while (hasMore) {
         const res = await listStudents({ per_page: 100, page })
         allStudents = [...allStudents, ...res.data]
-        if (res.meta.page >= res.meta.page_count) {
+        
+        // Fix: backend returns total_pages, not page_count
+        const totalPages = (res.meta as any).total_pages || res.meta.page_count || 1;
+        if (res.meta.page >= totalPages || res.data.length === 0) {
           hasMore = false
         } else {
           page++
@@ -62,6 +64,13 @@ export default function TeacherDetail() {
       const tCapoeiraNorm = normalize(t.capoeira_name || '')
 
       const filtered = raw.filter(s => {
+        // Direct relational match (modern approach)
+        const isMatchedRelationally = s.studentTurmas?.some((st: any) => 
+          st.turma?.teacherId === t.id || st.turma?.teacher?.id === t.id
+        )
+        if (isMatchedRelationally) return true
+
+        // Fallback: Legacy notes matching via parseStudentExtra
         const extra = parseStudentExtra(s)
         if (!extra.teacher) return false
 
@@ -92,7 +101,7 @@ export default function TeacherDetail() {
           const ex = parseStudentExtra(candidate)
           setDebugInfo(`Debug: Encontrado aluno '${candidate.full_name}' com professor '${ex.teacher}'. Esperado: '${t.full_name}' ou '${t.capoeira_name}'`)
         } else {
-          setDebugInfo('Nenhum aluno encontrado com o nome deste professor nas observações.')
+          setDebugInfo('')
         }
       } else {
         setDebugInfo('')

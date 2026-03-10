@@ -55,8 +55,11 @@ export function PromoteStudentModal({ student, onClose, onSuccess }: Props) {
     .filter(g => g.active !== false)
     .sort((a, b) => a.order - b.order)
 
-  const currentGradName = extra.graduation
-  const currentGradObj = graduations.find(g => g.name === currentGradName)
+  // Resolve current graduation by UUID (new system) or by name (legacy notes)
+  const currentGradId = (student as any).currentGraduationId
+  const currentGradObj = currentGradId
+    ? graduations.find(g => (g as any).id === currentGradId)
+    : graduations.find(g => g.name === extra.graduation)
   const currentOrder = currentGradObj?.order ?? -1
 
   const availableGraduations = graduations.filter(g => {
@@ -74,7 +77,7 @@ export function PromoteStudentModal({ student, onClose, onSuccess }: Props) {
         primaryAction={{
             label: 'Salvar Alteração',
             onClick: handlePromote,
-            disabled: !newGraduation || !teacherId || !date || !notes || (type === 'PROMOTION' && newGraduation === extra.graduation) || loading,
+            disabled: !newGraduation || !teacherId || !date || !notes || (type === 'PROMOTION' && newGraduation === currentGradId) || loading,
             loading: loading
         }}
         secondaryAction={{
@@ -85,7 +88,7 @@ export function PromoteStudentModal({ student, onClose, onSuccess }: Props) {
         <div className="space-y-4">
             <div className="bg-gray-50 p-3 rounded text-sm mb-4 border border-gray-200">
                 <p><span className="font-semibold text-gray-700">Aluno:</span> {student.full_name}</p>
-                <p><span className="font-semibold text-gray-700">Graduação Atual:</span> {extra.graduation || 'Sem graduação'}</p>
+                <p><span className="font-semibold text-gray-700">Graduação Atual:</span> {currentGradObj?.name || extra.graduation || 'Sem graduação'}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -106,7 +109,7 @@ export function PromoteStudentModal({ student, onClose, onSuccess }: Props) {
                 <Select value={newGraduation} onChange={e => setNewGraduation(e.target.value)}>
                     <option value="">Selecione...</option>
                     {availableGraduations.map(g => (
-                        <option key={g.id} value={g.name}>
+                        <option key={g.id} value={(g as any).id}>
                             {g.name} {typeof g.grau === 'number' ? `(Grau ${g.grau})` : ''}
                         </option>
                     ))}

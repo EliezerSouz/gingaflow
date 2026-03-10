@@ -51,14 +51,6 @@ export default function StudentDetailsScreen() {
     if (loading && !student) return <View style={styles.center}><ActivityIndicator color="#4F46E5" /></View>;
     if (!student) return <View style={styles.center}><Text>Aluno não encontrado</Text></View>;
 
-    const latestGrad = student.graduations?.[0];
-    const currentGradName = latestGrad?.level || student.graduation_current;
-    const currentGradConfig = findGraduation(currentGradName);
-
-    const sortedGraduations = student.graduations
-        ? [...student.graduations].sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
-        : [];
-
     const respMatch = student.notes?.match(/\[RESPONSÁVEL\]\r?\nNome: (.*)\r?\nCPF: (.*)\r?\nParentesco: (.*)\r?\nTelefone: (.*)/);
     const responsavelData = respMatch ? {
         nome: respMatch[1],
@@ -66,6 +58,9 @@ export default function StudentDetailsScreen() {
         parentesco: respMatch[3],
         telefone: respMatch[4]?.trim() || ''
     } : null;
+
+    const gradMatch = student.notes?.match(/\[CAPOEIRA\]\r?\nGraduação: (.*)/);
+    const graduationFromNotes = gradMatch ? gradMatch[1].trim() : null;
 
     const birthDate = student.birth_date ? new Date(student.birth_date) : null;
     let age = 0;
@@ -77,8 +72,16 @@ export default function StudentDetailsScreen() {
             age--;
         }
     }
-    const isMinor = !!birthDate && age < 18;
+    const isMinor = !!birthDate && age > 0 && age < 18;
     const responsavel = isMinor ? responsavelData : null;
+
+    const latestGrad = student.graduations?.[0];
+    const currentGradName = latestGrad?.level || graduationFromNotes || student.graduation_current;
+    const currentGradConfig = findGraduation(currentGradName);
+
+    const sortedGraduations = student.graduations
+        ? [...student.graduations].sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+        : [];
 
     const finMatch = student.notes?.match(/\[FINANCEIRO\]\r?\nMensalidade: (.*)\r?\nVencimento: Dia (.*)\r?\nForma Pagamento: (.*)/);
     const financeiroInfo = finMatch ? {
