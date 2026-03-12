@@ -74,10 +74,13 @@ export default function TeacherAgenda() {
 
   teacher.units.forEach(unit => {
     unit.turmas.forEach(turma => {
-      if (turma.schedule) {
-        const scheduleItems = parseSchedule(turma.schedule)
-        scheduleItems.forEach(item => {
-          const dayName = daysMap[item.day]
+      if (turma.schedules && turma.schedules.length > 0) {
+        turma.schedules.forEach((sched: any) => {
+          const dayNameMapping: Record<string, string> = {
+            'DOM': 'Domingo', 'SEG': 'Segunda', 'TER': 'Terça',
+            'QUA': 'Quarta', 'QUI': 'Quinta', 'SEX': 'Sexta', 'SAB': 'Sábado'
+          }
+          const dayName = dayNameMapping[sched.dayOfWeek] || sched.dayOfWeek
           if (!scheduleByDay[dayName]) {
             scheduleByDay[dayName] = []
           }
@@ -86,7 +89,7 @@ export default function TeacherAgenda() {
             unitColor: (unit as any).color,
             turma: {
               ...turma,
-              time: item.time
+              time: sched.startTime
             }
           })
         })

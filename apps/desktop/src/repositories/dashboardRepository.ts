@@ -38,10 +38,10 @@ export class DashboardRepository {
             'SELECT COUNT(*) as count FROM students WHERE status = "ATIVO"'
         );
         
-        // 2. Overdue Payments
+        // 2. Overdue Receivables
         const overdueCount: any[] = await db.select(
-            'SELECT COUNT(*) as count FROM payments WHERE status = "ATRASADO" OR (status = "EM_ABERTO" AND period < ?)',
-            [today.slice(0, 7)]
+            'SELECT COUNT(*) as count FROM receivables WHERE status = "OVERDUE" OR (status = "OPEN" AND due_date < ?)',
+            [today]
         );
 
         // 3. Today's presences
@@ -57,7 +57,7 @@ export class DashboardRepository {
 
         // 5. Revenue today
         const revenueToday: any[] = await db.select(
-            'SELECT SUM(monthly_fee_cents) as sum FROM payments WHERE status = "PAGO" AND paid_at LIKE ?',
+            'SELECT SUM(amount) as sum FROM receivable_payments WHERE paid_at LIKE ?',
             [`${today}%`]
         );
 

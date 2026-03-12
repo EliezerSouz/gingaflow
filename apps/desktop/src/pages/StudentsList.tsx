@@ -219,6 +219,7 @@ export default function StudentsList() {
               const extra = parseStudentExtra(row)
               const statusColor =
                 row.status === 'ATIVO' ? 'success' :
+                  row.status === 'DELINQUENT' ? 'danger' :
                   row.status === 'INATIVO' ? 'neutral' :
                     'warning'
 
@@ -314,7 +315,7 @@ export default function StudentsList() {
                     )}
                   </div>
                 ),
-                status: <Badge variant={statusColor}>{row.status}</Badge>,
+                status: <Badge variant={statusColor}>{row.status === 'DELINQUENT' ? 'INADIMPLENTE' : row.status}</Badge>,
                 next_due_date: (
                   <div className="text-sm text-secondary">
                     {extra.next_due_date ? extra.next_due_date.split('-').reverse().join('/') : '-'}

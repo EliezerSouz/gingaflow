@@ -98,6 +98,10 @@ export async function registerStudentRoutes(app: FastifyInstance) {
             }
           },
           schedules: true,
+          receivables: {
+            where: { status: 'OVERDUE' },
+            take: 1
+          },
           graduations: {
             take: 1,
             orderBy: { date: 'desc' }
@@ -124,16 +128,21 @@ export async function registerStudentRoutes(app: FastifyInstance) {
           colorLeft: gradData?.colorLeft,
           colorRight: gradData?.colorRight,
           pontaLeft: gradData?.pontaLeft,
-          pontaRight: gradData?.pontaRight,
-          cordaType: gradData?.cordaType
-        }
-      })
-      return { 
-        ...student, 
-        graduations: enrichedGraduations,
-        level: student.currentGraduation?.name || (enrichedGraduations[0]?.level !== 'Desconhecida' ? enrichedGraduations[0]?.level : null)
+        pontaRight: gradData?.pontaRight,
+        cordaType: gradData?.cordaType
       }
     })
+    
+    // Map delinquent status dynamically based on overdue receivables
+    const isDelinquent = student.receivables && student.receivables.length > 0;
+    
+    return { 
+      ...student, 
+      status: isDelinquent ? 'DELINQUENT' : student.status,
+      graduations: enrichedGraduations,
+      level: student.currentGraduation?.name || (enrichedGraduations[0]?.level !== 'Desconhecida' ? enrichedGraduations[0]?.level : null)
+    }
+  })
 
     return {
       data: enrichedItems,
@@ -172,7 +181,7 @@ export async function registerStudentRoutes(app: FastifyInstance) {
             }
           }
         },
-        payments: { take: 5, orderBy: { period: 'desc' } },
+        receivables: { take: 10, orderBy: { period: 'desc' } },
         graduations: { take: 10, orderBy: { date: 'desc' } },
         schedules: true,
         currentGraduation: true
@@ -200,7 +209,15 @@ export async function registerStudentRoutes(app: FastifyInstance) {
       }
     })
 
-    return { ...student, graduations: enrichedGraduations }
+    // Map delinquent status dynamically based on overdue receivables
+    const overdueReceivables = student.receivables?.filter((p: any) => p.status === 'OVERDUE') || [];
+    const isDelinquent = overdueReceivables.length > 0;
+
+    return { 
+       ...student, 
+       status: isDelinquent ? 'DELINQUENT' : student.status,
+       graduations: enrichedGraduations 
+    }
   })
 
   app.post('/students', async (req, reply) => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Icon } from '@gingaflow/ui'
+import { Card, Icon, Button } from '@gingaflow/ui'
 import { getFinancialReport, getAcademicReport, FinancialReport, AcademicReport } from '../services/reports'
 import { toast } from 'sonner'
 
@@ -34,8 +34,50 @@ export default function Reports() {
 
     if (loading) return <div className="text-center py-8">Carregando indicadores...</div>
 
+    function handleExportCSV() {
+        if (!academic || !financial) return
+
+        let csv = "--- RELATÓRIO GINGAFLOW ---\n\n"
+        csv += "== FINANCEIRO ==\n"
+        csv += `Receita Anual Total;R$ ${financial.monthlyRevenue.reduce((a, b) => a + b, 0).toFixed(2)}\n`
+        csv += `Inadimplência (Valor);R$ ${financial.overdue.value.toFixed(2)}\n`
+        csv += `Inadimplência (Quantidade);${financial.overdue.count}\n`
+        csv += `Previsão Mês Atual;R$ ${financial.forecast.value.toFixed(2)}\n\n`
+        
+        csv += "Receita Mensal (Jan-Dez):\n"
+        const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+        months.forEach((m, idx) => {
+             csv += `${m};R$ ${(financial.monthlyRevenue[idx] || 0).toFixed(2)}\n`
+        })
+
+        csv += "\n== ACADÊMICO ==\n"
+        csv += "Alunos por Status:\n"
+        academic.byStatus.forEach(s => {
+             csv += `${s.status};${s.count}\n`
+        })
+
+        csv += "\nAlunos por Graduação:\n"
+        academic.byGraduation.forEach(g => {
+             csv += `${g.name};${g.count}\n`
+        })
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.setAttribute('href', url)
+        a.setAttribute('download', `relatorio_gingaflow_${new Date().toISOString().split('T')[0]}.csv`)
+        a.click()
+    }
+
     return (
         <div className="space-y-8">
+            <div className="flex justify-end">
+                <Button onClick={handleExportCSV} variant="secondary">
+                   <Icon name="export" className="mr-2" />
+                   Exportar Relatório (CSV)
+                </Button>
+            </div>
+            
             {/* Seção Financeira */}
             <section>
                 <h2 className="text-lg font-medium text-primary mb-4 flex items-center gap-2">

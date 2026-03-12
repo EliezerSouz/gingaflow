@@ -71,12 +71,12 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                     prisma.attendance.count({
                         where: { organizationId: orgId, date: todayStr, status: 'PRESENT', ...attendanceUnitFilter }
                     }),
-                    prisma.payment.count({
-                        where: { organizationId: orgId, status: 'ATRASADO', student: studentUnitFilter }
+                    prisma.receivable.count({
+                        where: { organizationId: orgId, status: 'OVERDUE', student: studentUnitFilter }
                     }),
-                    prisma.payment.aggregate({
-                        where: { organizationId: orgId, status: 'PAGO', paidAt: { gte: new Date(todayStr) }, student: studentUnitFilter },
-                        _sum: { monthlyFeeCents: true }
+                    prisma.receivablePayment.aggregate({
+                        where: { organizationId: orgId, paidAt: { contains: todayStr }, receivable: { student: studentUnitFilter } },
+                        _sum: { amount: true }
                     }),
                     prisma.student.count({
                         where: { organizationId: orgId, status: 'ATIVO', ...studentUnitFilter }
@@ -207,79 +207,25 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                         })
                     })
 
-                    // Fallback para turmas legadas sem registro na tabela de horários (caso a migração tenha falhado ou algo assim)
-                    if (t.schedules.length === 0 && t.schedule) {
-                        const parts = t.schedule.split(',').map(p => p.trim().toUpperCase())
-                        parts.forEach(part => {
-                            if (part.includes(todayShort) || part.includes(todayLong)) {
-                                const timeMatch = part.match(/\d{2}:\d{1,2}/)
-                                const time = timeMatch ? timeMatch[0] : '--:--'
-                                const sessionAttendances = allAttendancesToday.filter(
-                                    a => a.turmaId === t.id && (a.time === time || (!a.time && time === '--:--'))
-                                ).length
-                                const count = sessionAttendances
-                                const enrolled = t._count.studentLinks
-                                const capacityThreshold = (t as any).capacity || 0
-
-                                let status = 'Vagas Disp.'
-                                if (capacityThreshold > 0 && enrolled >= capacityThreshold) {
-                                    status = 'Aula Cheia'
-                                }
-
-                                const teacherData = t.teacher;
-                                const isCapoeira = (t as any).activityType?.name?.toLowerCase().includes('capoeira');
-                                const teacherName = (isCapoeira && teacherData?.nickname)
-                                    ? teacherData.nickname
-                                    : (teacherData?.full_name || 'Sem Prof.');
-
-                                const { status: classStatus, attendanceStatus } = calculateClassStatus(time, (t as any).durationMinutes || 60);
-
-                                classesToday.push({
-                                    id: `${t.id}-${time}`,
-                                    turmaId: t.id,
-                                    name: t.name,
-                                    time,
-                                    durationMinutes: (t as any).durationMinutes || 60,
-                                    teacher: teacherName,
-                                    count,
-                                    enrolledCount: enrolled,
-                                    status: classStatus,
-                                    occupancyStatus: status,
-                                    attendanceStatus,
-                                    attendanceAvailable: attendanceStatus === 'DISPONÍVEL',
-                                    unitName: t.unit.name,
-                                    unitColor: t.unit.color || '#4F46E5',
-                                    students: t.studentLinks.map((link: any) => {
-                                        const s = link.student;
-                                        const grad = s.currentGraduationId ? gradsMap[s.currentGraduationId] : null;
-                                        return {
-                                            id: s.id,
-                                            name: (isCapoeira && s.nickname) ? s.nickname : s.full_name,
-                                            cord: isCapoeira ? (grad || { color: '#D1D5DB' }) : null
-                                        };
-                                    })
-                                })
-                            }
-                        })
-                    }
+                    // Removed legacy t.schedule fallback per Etapa 5
                 })
 
                 classesToday.sort((a, b) => a.time.localeCompare(b.time))
 
                 // 5. Financeiro
                 const [monthlyRevenueAggr, overdueValueAggr] = await Promise.all([
-                    prisma.payment.aggregate({
-                        where: { organizationId: orgId, status: 'PAGO', paidAt: { gte: new Date(currentMonthStr + '-01') }, student: studentUnitFilter },
-                        _sum: { monthlyFeeCents: true }
+                    prisma.receivablePayment.aggregate({
+                        where: { organizationId: orgId, paidAt: { contains: currentMonthStr }, receivable: { student: studentUnitFilter } },
+                        _sum: { amount: true }
                     }),
-                    prisma.payment.aggregate({
-                        where: { organizationId: orgId, status: 'ATRASADO', student: studentUnitFilter },
-                        _sum: { monthlyFeeCents: true }
+                    prisma.receivable.aggregate({
+                        where: { organizationId: orgId, status: 'OVERDUE', student: studentUnitFilter },
+                        _sum: { balance: true }
                     })
                 ])
 
-                const monthlyRevenue = (monthlyRevenueAggr._sum.monthlyFeeCents || 0) / 100
-                const overdueValue = (overdueValueAggr._sum.monthlyFeeCents || 0) / 100
+                const monthlyRevenue = (monthlyRevenueAggr._sum.amount || 0) / 100
+                const overdueValue = (overdueValueAggr._sum.balance || 0) / 100
                 const ticketAverage = activeStudents > 0 ? Math.round(monthlyRevenue / activeStudents) : 0
 
                 // 6. Engajamento
@@ -333,7 +279,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                     summary: {
                         presences: presencesToday,
                         classesCount: classesToday.length,
-                        revenueToday: (revenueTodayAggr._sum.monthlyFeeCents || 0) / 100,
+                        revenueToday: (revenueTodayAggr._sum.amount || 0) / 100,
                         overdueCount
                     },
                     status: {

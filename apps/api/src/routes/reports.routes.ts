@@ -14,18 +14,17 @@ export async function registerReportsRoutes(app: FastifyInstance) {
         const startOfYear = new Date(`${year}-01-01`)
         const endOfYear = new Date(`${year}-12-31`)
 
-        // Receita por mês (PAGO)
-        const riskPayments = await prisma.payment.findMany({
+        // Receita por mês
+        const riskPayments = await prisma.receivablePayment.findMany({
             where: {
                 organizationId: user.organizationId,
-                status: 'PAGO',
                 paidAt: {
-                    gte: startOfYear,
-                    lte: endOfYear
+                    gte: startOfYear.toISOString(),
+                    lte: endOfYear.toISOString()
                 }
             },
             select: {
-                monthlyFeeCents: true,
+                amount: true,
                 paidAt: true
             }
         })
@@ -33,45 +32,45 @@ export async function registerReportsRoutes(app: FastifyInstance) {
         const monthlyRevenue = Array(12).fill(0)
         riskPayments.forEach(p => {
             if (p.paidAt) {
-                const month = p.paidAt.getMonth()
-                monthlyRevenue[month] += p.monthlyFeeCents
+                const month = new Date(p.paidAt).getMonth()
+                monthlyRevenue[month] += p.amount
             }
         })
 
-        // KPI: Inadimplência atual (Pagamentos ATRASADO)
-        const overdueCount = await prisma.payment.count({
+        // KPI: Inadimplência atual (Receivables OVERDUE)
+        const overdueCount = await prisma.receivable.count({
             where: {
-                status: 'ATRASADO',
+                status: 'OVERDUE',
                 organizationId: user.organizationId
             }
         })
 
-        const overdueValueAggr = await prisma.payment.aggregate({
+        const overdueValueAggr = await prisma.receivable.aggregate({
             where: {
-                status: 'ATRASADO',
+                status: 'OVERDUE',
                 organizationId: user.organizationId
             },
-            _sum: { monthlyFeeCents: true }
+            _sum: { balance: true }
         })
 
         // KPI: Previsão de receita mês atual (status != PAGO mas período = mês atual)
         const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM
-        const forecastAggr = await prisma.payment.aggregate({
+        const forecastAggr = await prisma.receivable.aggregate({
             where: {
                 period: currentPeriod,
                 organizationId: user.organizationId
             },
-            _sum: { monthlyFeeCents: true }
+            _sum: { finalValue: true }
         })
 
         return {
             monthlyRevenue: monthlyRevenue.map(cents => Math.round(cents / 100)), // Retornar em reais para gráfico
             overdue: {
                 count: overdueCount,
-                value: Math.round((overdueValueAggr._sum.monthlyFeeCents || 0) / 100)
+                value: Math.round((overdueValueAggr._sum.balance || 0) / 100)
             },
             forecast: {
-                value: Math.round((forecastAggr._sum.monthlyFeeCents || 0) / 100)
+                value: Math.round((forecastAggr._sum.finalValue || 0) / 100)
             }
         }
     })

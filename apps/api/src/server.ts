@@ -6,7 +6,7 @@ import { LoginInputSchema, UserSchema } from '@gingaflow/shared'
 import { z } from 'zod'
 import { prisma } from './database/prisma'
 import { registerStudentRoutes } from './routes/students.routes'
-import { registerPaymentRoutes } from './routes/payments.routes'
+import { registerReceivableRoutes } from './routes/receivables.routes'
 import { registerGraduationRoutes } from './routes/graduations.routes'
 import { registerUnitRoutes } from './routes/units.routes'
 import { registerTeacherRoutes } from './routes/teachers.routes'
@@ -554,7 +554,7 @@ server.put('/settings', async (req, reply) => {
 })
 
 await server.register(registerStudentRoutes)
-await server.register(registerPaymentRoutes)
+await server.register(registerReceivableRoutes)
 await server.register(registerGraduationRoutes)
 await server.register(registerUnitRoutes)
 await server.register(registerTeacherRoutes)

@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ButtonSize = 'sm' | 'md'
@@ -318,7 +319,7 @@ export function Icon({ name, className }: { name: IconName; className?: string }
 }
 
 export function Card({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={'rounded bg-white dark:bg-gray-800 p-4 shadow dark:shadow-none dark:border dark:border-gray-700 ' + (className ?? '')}>{children}</div>
+  return <div className={'rounded-2xl bg-white dark:bg-white/[0.03] dark:backdrop-blur-3xl p-5 shadow-lg border border-gray-200 dark:border-white/10 transition-all ' + (className ?? '')}>{children}</div>
 }
 
 export function MetricCard({
@@ -359,12 +360,14 @@ export function Sidebar({
   items,
   activePath,
   collapsed,
+  user,
   onNavigate,
   onToggle
 }: {
   items: SidebarItem[]
   activePath: string
   collapsed?: boolean
+  user?: { name: string; role?: string }
   onNavigate: (path: string) => void
   onToggle?: () => void
 }) {
@@ -388,24 +391,28 @@ export function Sidebar({
   return (
     <aside
       className={
-        'flex h-full flex-col border-r bg-white dark:bg-gray-800 dark:border-gray-700 transition-all duration-300 ' +
-        (collapsed ? 'w-16' : 'w-64')
+        'flex h-full flex-col rounded-2xl border border-white/10 bg-white/50 dark:bg-gradient-to-b dark:from-[#1e1b4b]/60 dark:to-[#111827]/80 dark:backdrop-blur-2xl transition-all duration-300 relative z-30 shadow-2xl ' +
+        (collapsed ? 'w-20' : 'w-[280px]')
       }
     >
-      <div className={'flex h-16 items-center border-b px-4 dark:border-gray-700 ' + (collapsed ? 'justify-center' : 'justify-between')}>
+      <div className={'flex h-[80px] flex-shrink-0 items-center border-b px-6 dark:border-gray-700/50 ' + (collapsed ? 'justify-center px-0' : 'justify-start')}>
         {!collapsed && (
-          <div className="text-xl font-bold text-brand-600 dark:text-brand-400 tracking-tight">
-            GingaFlow
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold shadow-sm">
+              G
+            </div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+              Ginga<span className="text-brand-500">Flow</span>
+            </div>
           </div>
         )}
-        <button
-          onClick={onToggle}
-          className="rounded p-1 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-        >
-          <Icon name="menu" className="h-6 w-6" />
-        </button>
+        {collapsed && (
+          <div className="h-8 w-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold shadow-sm cursor-pointer" onClick={onToggle}>
+            G
+          </div>
+        )}
       </div>
-      <nav className="flex-1 space-y-1 p-2 py-4 overflow-y-auto">
+      <nav className="flex-1 space-y-1.5 p-4 overflow-y-auto custom-scrollbar">
         {items.map(item => {
           const active = activePath === item.path || (item.children?.some(child => activePath.startsWith(child.path)) ?? false)
           const isExpanded = expandedItems.includes(item.path)
@@ -422,10 +429,10 @@ export function Sidebar({
                   }
                 }}
                 className={
-                  'group flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors ' +
+                  'group flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ' +
                   (active && !hasChildren
-                    ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/50 dark:text-brand-300'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white')
+                    ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300 border border-transparent dark:border-brand-500/10 shadow-sm'
+                    : 'text-gray-700 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-gray-200 border border-transparent')
                 }
                 title={item.label}
               >
@@ -465,6 +472,24 @@ export function Sidebar({
           )
         })}
       </nav>
+
+      {/* User Footer matching the mockup */}
+      {user && (
+        <div className="p-4 border-t dark:border-gray-700/50">
+          <div className="flex items-center gap-3 rounded-xl p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer">
+            <div className="h-10 w-10 flex-shrink-0 rounded-full bg-brand-100 dark:bg-brand-900/50 flex items-center justify-center text-brand-600 dark:text-brand-400 font-bold border border-brand-200 dark:border-brand-800">
+              {user.name[0]}
+            </div>
+            {!collapsed && (
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-200 truncate">{user.name}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-500 truncate capitalize">{user.role?.toLowerCase() || 'Usuário'}</p>
+              </div>
+            )}
+            {!collapsed && <Icon name="chevron-up" className="h-4 w-4 text-gray-400 flex-shrink-0" />}
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
@@ -489,11 +514,11 @@ export function TopBar({
   onLogout?: () => void
 }) {
   return (
-    <div className="flex h-16 flex-shrink-0 items-center justify-between border-b bg-white dark:bg-gray-800 dark:border-gray-700 px-4 shadow-sm z-20">
+    <div className="flex h-[72px] flex-shrink-0 items-center justify-between rounded-2xl border border-white/10 bg-white/50 dark:bg-gradient-to-r dark:from-[#111827]/60 dark:to-[#1e1b4b]/60 dark:backdrop-blur-2xl px-6 shadow-sm z-20">
       <div className="flex items-center gap-4">
         {onToggle && (
-          <button onClick={onToggle} className="rounded p-1 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
-            <Icon name="menu" className="h-6 w-6" />
+          <button onClick={onToggle} className="rounded-lg p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors">
+            <Icon name="menu" className="h-5 w-5" />
           </button>
         )}
         {logo && (
@@ -513,16 +538,24 @@ export function TopBar({
           {title && <div className="text-sm font-medium text-gray-900 dark:text-white">{title}</div>}
         </div>
       </div>
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-3 pl-4 border-l dark:border-gray-700">
-          <div className="flex flex-col items-end">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{user.name}</span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">{user.role?.toLowerCase() || 'Usuário'}</span>
+        <div className="flex items-center gap-3">
+          {/* Quick actions placeholder like search can go here */}
+          <div className="relative hidden md:block mr-2">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            <input type="text" placeholder="Buscar..." className="w-64 rounded-xl border border-gray-200 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/40 px-3 py-2 pl-9 text-sm text-gray-900 dark:text-white shadow-inner focus:border-brand-500 focus:ring-brand-500 focus:outline-none transition-all placeholder-gray-400 dark:placeholder-gray-500" />
           </div>
-          <div className="h-8 w-8 rounded-full bg-brand-100 dark:bg-brand-900 flex items-center justify-center text-brand-700 dark:text-brand-300 font-medium">
-            {user.name[0]}
+
+          <div className="flex items-center gap-3 pl-4 border-l border-gray-200 dark:border-gray-700/50 cursor-pointer hover:opacity-80 transition-opacity">
+            <div className="h-9 w-9 rounded-full bg-brand-100 dark:bg-brand-900/50 flex flex-shrink-0 items-center justify-center text-brand-600 dark:text-brand-400 font-bold border border-brand-200 dark:border-brand-800/50">
+              {user.name[0]}
+            </div>
+            <div className="flex flex-col items-start hidden sm:flex">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{user.name}</span>
+              <span className="text-[10px] uppercase font-bold text-brand-500 dark:text-brand-400">{user.role || 'Usuário'}</span>
+            </div>
           </div>
-        </div>
       </div>
     </div>
   )
@@ -580,12 +613,20 @@ export function Dropdown({
   React.useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false)
+        // We also need to check if the click was inside the portal
+        const target = event.target as HTMLElement
+        if (!target.closest('.gingaflow-dropdown-menu')) {
+          setOpen(false)
+        }
       }
     }
 
-    function handleScroll() {
-      if (open) setOpen(false)
+    function handleScroll(e: Event) {
+      // Don't close if scrolling inside the dropdown itself
+      const target = e.target as HTMLElement
+      if (open && target && !target.closest('.gingaflow-dropdown-menu')) {
+        setOpen(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
@@ -604,44 +645,52 @@ export function Dropdown({
   const toggle = () => {
     if (!open && ref.current) {
       const rect = ref.current.getBoundingClientRect()
+      // Calulate fixed position based on viewport
       setCoords({
         top: rect.bottom + 5,
-        left: rect.right - 224
+        left: rect.right - 224 // 224 is w-56 (56 * 4)
       })
     }
     setOpen(!open)
   }
 
+  const dropdownMenu = open ? createPortal(
+    <div
+      className="fixed w-56 rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-[999999] gingaflow-dropdown-menu"
+      style={{ top: coords.top, left: coords.left }}
+    >
+      <div className="py-1">
+        {items.map((item, i) => (
+          <button
+            key={i}
+            onClick={(e) => {
+              e.stopPropagation()
+              item.onClick()
+              setOpen(false)
+            }}
+            className={
+              'group flex w-full items-center px-4 py-2 text-sm ' +
+              (item.variant === 'danger'
+                ? 'text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700')
+            }
+          >
+            {item.icon && <Icon name={item.icon} className="mr-3 h-4 w-4 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-300" />}
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body
+  ) : null
+
   return (
     <div className="relative inline-block text-left" ref={ref}>
-      <div onClick={toggle}>{trigger}</div>
-      {open && (
-        <div
-          className="fixed w-56 rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none z-[100]"
-          style={{ top: coords.top, left: coords.left }}
-        >
-          <div className="py-1">
-            {items.map((item, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  item.onClick()
-                  setOpen(false)
-                }}
-                className={
-                  'group flex w-full items-center px-4 py-2 text-sm ' +
-                  (item.variant === 'danger'
-                    ? 'text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700')
-                }
-              >
-                {item.icon && <Icon name={item.icon} className="mr-3 h-4 w-4 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-300" />}
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div onClick={(e) => {
+        e.stopPropagation()
+        toggle()
+      }}>{trigger}</div>
+      {dropdownMenu}
     </div>
   )
 }
@@ -669,16 +718,19 @@ export function AppShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-transparent p-4 md:p-6 gap-6">
       {sidebar}
       <div className="flex flex-1 flex-col overflow-hidden relative">
         <div className="z-20 flex-shrink-0 relative">{topbar}</div>
-        <main className="flex-1 overflow-y-auto focus:outline-none">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 md:px-8">
-            <div className="py-8">
-              {header}
-              {toolbar}
-              <div className="mt-8">{children}</div>
+        <main className="flex-1 overflow-y-auto focus:outline-none relative mt-6 custom-scrollbar pr-2">
+          {/* Main Global Content Area */}
+          <div className="relative z-10 w-full pb-10">
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                {header}
+                {toolbar}
+              </div>
+              <div className="mt-2">{children}</div>
             </div>
           </div>
         </main>
@@ -767,7 +819,7 @@ export function Tabs({
 }
 
 export function TabsList({ children }: { children: React.ReactNode }) {
-  return <div className="inline-flex rounded-md border dark:border-gray-700 bg-white dark:bg-gray-800 p-1 text-sm">{children}</div>
+  return <div className="inline-flex rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.03] p-1.5 shadow-sm dark:shadow-lg dark:backdrop-blur-3xl text-sm gap-1">{children}</div>
 }
 
 export function TabsTrigger({
@@ -786,8 +838,8 @@ export function TabsTrigger({
     <button
       onClick={() => onChange(value)}
       className={
-        'rounded px-3 py-1.5 transition-all ' +
-        (active ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700')
+        'rounded-xl px-5 py-2 font-medium transition-all duration-200 ' +
+        (active ? 'bg-brand-600 text-white shadow-md' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-gray-200')
       }
     >
       {children}
@@ -837,8 +889,8 @@ export function Table<T = any>({
   data: Array<T>
 }) {
   return (
-    <div className="rounded border dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-      <div className="grid border-b dark:border-gray-700 bg-surface-alt dark:bg-gray-900/50" style={{ gridTemplateColumns: columns.map(c => c.width ?? '1fr').join(' ') }}>
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700/50 bg-white dark:bg-gray-800/60 dark:backdrop-blur-md overflow-hidden shadow-sm">
+      <div className="grid border-b dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/40" style={{ gridTemplateColumns: columns.map(c => c.width ?? '1fr').join(' ') }}>
         {columns.map(col => (
           <div key={col.key} className="px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">
             {col.header}

@@ -25,7 +25,27 @@ export interface DashboardData {
         status: 'AGENDADA' | 'EM_ANDAMENTO' | 'FINALIZADA';
         unitName: string;
         unitColor: string;
+        students?: Array<{
+            id: string;
+            name: string;
+            cord?: {
+                 color?: string;
+                 colorLeft?: string;
+                 colorRight?: string;
+                 pontaLeft?: string;
+                 pontaRight?: string;
+            } | null;
+        }>;
     }>;
+    engagement?: {
+        popularActivities: Array<{ name: string; count: number }>;
+        topTeachers: Array<{ name: string; count: number }>;
+    };
+    finance?: {
+        monthlyRevenue: number;
+        overdueValue: number;
+        ticketAverage: number;
+    };
     alerts: Array<{ type: 'danger' | 'warning' | 'info'; message: string; icon: string }>;
 }
 

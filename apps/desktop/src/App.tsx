@@ -27,7 +27,32 @@ import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Toaster } from 'sonner'
 
+import { syncService } from './services/SyncService'
+
 export default function App() {
+  useEffect(() => {
+    // Sync loop worker
+    const interval = setInterval(() => {
+      if (navigator.onLine) {
+        syncService.triggerSync().catch(console.error)
+      }
+    }, 15000) // 15s interval
+    
+    // Sync immediately when connection is restored
+    const handleOnline = () => syncService.triggerSync().catch(console.error)
+    window.addEventListener('online', handleOnline)
+    
+    // Initial sync
+    if (navigator.onLine) {
+       syncService.triggerSync().catch(console.error)
+    }
+    
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [])
+
   return (
     <ErrorBoundary>
       <ThemeProvider>
@@ -275,8 +300,7 @@ function Shell({
       path: '/settings',
       children: [
         { label: 'Geral', path: '/settings/general' },
-        { label: 'Usuários', path: '/settings/users' },
-        { label: 'Unidades & Turmas', path: '/settings/units' }
+        { label: 'Usuários', path: '/settings/users' }
       ]
     }] : [])
   ]
@@ -284,7 +308,7 @@ function Shell({
   const items: SidebarItem[] = [
     ...baseItems,
     ...groupedItems,
-    { label: theme === 'dark' ? 'Modo Claro' : 'Modo Escuro', icon: theme === 'dark' ? 'sun' : 'moon', path: '#theme' }
+    { label: theme === 'dark' ? 'Modo Claro' : 'Modo Escuro', icon: (theme === 'dark' ? 'sun' : 'moon') as IconName, path: '#theme' }
   ]
 
   const resolvedToolbar = actions ? (
@@ -307,6 +331,7 @@ function Shell({
           items={items}
           activePath={location.pathname}
           collapsed={collapsed}
+          user={{ name: auth.name || 'Usuário', role: auth.role || undefined }}
           onToggle={() => setCollapsed(v => !v)}
           onNavigate={p => {
             if (p === '#theme') {

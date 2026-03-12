@@ -76,9 +76,11 @@ export function PromoteStudentModal({ student, onClose, onSuccess }: Props) {
         onClose={onClose}
         primaryAction={{
             label: 'Salvar Alteração',
-            onClick: handlePromote,
-            disabled: !newGraduation || !teacherId || !date || !notes || (type === 'PROMOTION' && newGraduation === currentGradId) || loading,
-            loading: loading
+            onClick: () => {
+              if (!(!newGraduation || !teacherId || !date || !notes || (type === 'PROMOTION' && newGraduation === currentGradId) || loading)) {
+                handlePromote()
+              }
+            }
         }}
         secondaryAction={{
             label: 'Cancelar',

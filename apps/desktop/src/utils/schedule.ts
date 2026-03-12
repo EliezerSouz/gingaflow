@@ -11,10 +11,24 @@ const DAYS_MAP = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 export function parseSchedule(scheduleString: string | null | undefined | any): Schedule {
   if (!scheduleString) return []
   
-  // If it's already an object/array (unexpected but possible if coming from JSON field automatically parsed)
+  // Custom mapping for TurmaSchedule format
+  const parseNewFormat = (item: any) => {
+    if (item.dayOfWeek && item.startTime) {
+      const dayMap: Record<string, number> = {
+        'DOM': 0, 'SEG': 1, 'TER': 2, 'QUA': 3, 'QUI': 4, 'SEX': 5, 'SAB': 6
+      }
+      return {
+        day: dayMap[item.dayOfWeek] ?? 0,
+        time: item.startTime
+      }
+    }
+    return null
+  }
+
+  // If it's already an object/array (unexpected but possible if coming from JSON field automatically parsed, or from new Turma.schedules array)
   if (typeof scheduleString === 'object') {
       if (Array.isArray(scheduleString)) {
-          return scheduleString.filter(item => 
+          return scheduleString.map(item => parseNewFormat(item) || item).filter(item => 
             typeof item.day === 'number' && 
             item.day >= 0 && 
             item.day <= 6 && 
@@ -32,7 +46,7 @@ export function parseSchedule(scheduleString: string | null | undefined | any): 
       const parsed = JSON.parse(trimmed)
       if (Array.isArray(parsed)) {
         // Basic validation
-        return parsed.filter(item => 
+        return parsed.map(item => parseNewFormat(item) || item).filter(item => 
           typeof item.day === 'number' && 
           item.day >= 0 && 
           item.day <= 6 && 
@@ -40,8 +54,9 @@ export function parseSchedule(scheduleString: string | null | undefined | any): 
         )
       } else if (typeof parsed === 'object' && parsed !== null) {
           // Handle single object case
-          if (typeof parsed.day === 'number' && typeof parsed.time === 'string') {
-              return [parsed]
+          const mapped = parseNewFormat(parsed) || parsed
+          if (typeof mapped.day === 'number' && typeof mapped.time === 'string') {
+              return [mapped]
           }
       }
     }

@@ -340,11 +340,10 @@ export default function UnitsPage() {
                             <div>
                               <div className="font-semibold text-gray-800 dark:text-white">{turma.name}</div>
                               <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
-                                {turma.schedule && (
-                                  <span>{formatSchedule(turma.schedule)}</span>
-                                )}
-                                {(turma as any).schedules?.length > 0 && (
-                                  <span>{(turma as any).schedules.map((s: any) => `${s.dayOfWeek} ${s.startTime}`).join(' · ')}</span>
+                                {turma.schedules && turma.schedules.length > 0 ? formatSchedule(turma.schedules as any) : (turma.schedule && formatSchedule(turma.schedule))}
+                                
+                                {turma.schedules && turma.schedules.length > 0 && (
+                                  <span>{turma.schedules.map((s: any) => `${s.dayOfWeek} ${s.startTime}`).join(' · ')}</span>
                                 )}
                                 {turma.defaultMonthlyFeeCents && (
                                   <>

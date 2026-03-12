@@ -80,7 +80,9 @@ function TeacherUnitsCell({ units }: { units: any[] }) {
                   <div key={t.id} className="text-gray-600 flex items-center gap-2 text-xs sm:text-sm">
                     <span>{t.name}</span>
                     <span className="text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 whitespace-nowrap">
-                      {formatSchedule(t.schedule)}
+                      {t.schedules && t.schedules.length > 0 
+                        ? t.schedules.map((s: any) => `${s.dayOfWeek} ${s.startTime}`).join(', ') 
+                        : (t.schedule && t.schedule !== '' ? formatSchedule(t.schedule) : 'Sem horário')}
                     </span>
                   </div>
                 ))

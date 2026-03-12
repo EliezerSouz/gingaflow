@@ -135,22 +135,61 @@ export async function getDb() {
             FOREIGN KEY(turma_id) REFERENCES turmas(id)
         );
 
-        CREATE TABLE IF NOT EXISTS payments (
+        CREATE TABLE IF NOT EXISTS receivables (
             id TEXT PRIMARY KEY,
             organization_id TEXT NOT NULL,
             student_id TEXT NOT NULL,
-            monthly_fee_cents INTEGER NOT NULL,
-            due_day INTEGER NOT NULL,
+            turma_id TEXT,
+            description TEXT,
             period TEXT NOT NULL,
+
+            original_value INTEGER NOT NULL,
+            discount INTEGER DEFAULT 0,
+            interest INTEGER DEFAULT 0,
+            fine INTEGER DEFAULT 0,
+
+            final_value INTEGER NOT NULL,
+            paid_value INTEGER DEFAULT 0,
+            balance INTEGER NOT NULL,
+
+            due_date TEXT NOT NULL,
+            promise_date TEXT,
             status TEXT NOT NULL,
-            paid_at TEXT,
-            method TEXT,
-            notes TEXT,
+
             synced INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(organization_id) REFERENCES organizations(id),
             FOREIGN KEY(student_id) REFERENCES students(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS receivable_payments (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            receivable_id TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            method TEXT NOT NULL,
+            paid_at TEXT NOT NULL,
+            created_by TEXT,
+            notes TEXT,
+            synced INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(organization_id) REFERENCES organizations(id),
+            FOREIGN KEY(receivable_id) REFERENCES receivables(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS receivable_histories (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            receivable_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            created_by TEXT,
+            synced INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(organization_id) REFERENCES organizations(id),
+            FOREIGN KEY(receivable_id) REFERENCES receivables(id)
         );
 
         CREATE TABLE IF NOT EXISTS attendance (
@@ -229,5 +268,12 @@ export async function getDb() {
         );
     `);
     
+    // Auto-migration for schema upgrades
+    try {
+        await dbInstance.execute('ALTER TABLE receivables ADD COLUMN promise_date TEXT;');
+    } catch (e) {
+        // Columns already exist
+    }
+
     return dbInstance;
 }

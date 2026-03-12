@@ -131,7 +131,7 @@ export default function TeacherDetail() {
       <Card>
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">{teacher.full_name}</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{teacher.full_name}</h2>
             <div className="mt-1 flex items-center gap-2 text-sm text-gray-500">
               <Badge variant={teacher.status === 'ATIVO' ? 'success' : 'neutral'}>{teacher.status}</Badge>
               <span>•</span>
@@ -147,7 +147,7 @@ export default function TeacherDetail() {
               const desc = g.description || [g.category, (typeof g.grau === 'number' ? `Grau ${g.grau}` : undefined)].filter(Boolean).join(' • ')
               return (
                 <>
-                  <div className="text-sm font-medium text-center">{g.name}</div>
+                  <div className="text-sm font-medium text-center text-gray-900 dark:text-white">{g.name}</div>
                   <div className="mt-1">
                     <CordaPreview grad={g} width={100} />
                   </div>
@@ -172,19 +172,19 @@ export default function TeacherDetail() {
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-gray-500">Email</div>
-                  <div>{teacher.email || '-'}</div>
+                  <div className="text-gray-900 dark:text-gray-200">{teacher.email || '-'}</div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-gray-500">Telefone</div>
-                  <div>{teacher.phone || '-'}</div>
+                  <div className="text-gray-900 dark:text-gray-200">{teacher.phone || '-'}</div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-gray-500">Graduação</div>
-                  <div>{teacher.graduation}</div>
+                  <div className="text-gray-900 dark:text-gray-200">{teacher.graduation}</div>
                 </div>
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-gray-500">Apelido</div>
-                  <div>{teacher.capoeira_name || '-'}</div>
+                  <div className="text-gray-900 dark:text-gray-200">{teacher.capoeira_name || '-'}</div>
                 </div>
               </div>
             </Card>

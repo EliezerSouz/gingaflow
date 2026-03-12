@@ -155,7 +155,10 @@ export default function AttendanceList({ turmaId, students, date, onAttendanceCh
           <Card key={student.id} className="p-3">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <div className="font-medium text-primary">{student.full_name}</div>
+                <div className="font-medium text-primary flex items-center gap-2">
+                   {student.full_name}
+                   {student.status === 'DELINQUENT' && <Badge variant="danger">INADIMPLENTE</Badge>}
+                </div>
                 <div className="text-xs text-secondary">{parseStudentExtra(student).graduation || 'Sem graduação'}</div>
               </div>
               

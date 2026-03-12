@@ -15,7 +15,7 @@ export type Student = {
   activities?: any[]
   studentTurmas?: any[]
   graduations?: any[]
-  payments?: any[]
+  receivables?: any[]
 }
 
 export async function listStudents(params: { 

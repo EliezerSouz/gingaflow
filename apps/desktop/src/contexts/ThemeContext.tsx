@@ -10,7 +10,7 @@ export function useTheme() {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark') // Default 'dark' to start modern
 
   useEffect(() => {
     if (theme === 'dark') {

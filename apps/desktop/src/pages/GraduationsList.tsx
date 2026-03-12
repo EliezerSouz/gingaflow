@@ -114,7 +114,7 @@ export default function GraduationsList() {
         ) : (
           <div className="divide-y">
             {settings.graduations.map((grad, index) => (
-              <div key={grad.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+              <div key={grad.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                 <div className="flex items-center space-x-4">
                   <div className="flex flex-col items-center justify-center w-8">
                     <button
@@ -127,7 +127,7 @@ export default function GraduationsList() {
                     <button
                       onClick={() => moveGraduation(index, 'down')}
                       disabled={index === (settings.graduations?.length || 0) - 1}
-                      className="text-gray-400 hover:text-gray-600 disabled:opacity-30 p-1"
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30 p-1"
                     >
                       <Icon name="chevron-down" className="w-4 h-4" />
                     </button>
@@ -138,11 +138,11 @@ export default function GraduationsList() {
                   </div>
 
                   <div>
-                    <div className="font-medium text-gray-900">
+                    <div className="font-medium text-gray-900 dark:text-white">
                       {grad.name}{typeof grad.grau === 'number' ? ` • Grau ${grad.grau}` : ''}
                     </div>
-                    {grad.category && <div className="text-xs text-gray-600">{grad.category}</div>}
-                    {!grad.active && <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Inativa</span>}
+                    {grad.category && <div className="text-xs text-gray-600 dark:text-gray-400">{grad.category}</div>}
+                    {!grad.active && <span className="text-xs bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 px-2 py-0.5 rounded border dark:border-gray-700">Inativa</span>}
                   </div>
                 </div>
 
